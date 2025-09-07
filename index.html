@@ -3,238 +3,428 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Extractor de Estructura de Tablas SQL</title>
+    <title>Generador de Queries de Ratificación v2</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
+            margin: 0;
             padding: 20px;
-            background-color: #f5f5f5;
+            background-color: #f5f7fa;
         }
         
         .container {
+            max-width: 1400px;
+            margin: 0 auto;
             background: white;
-            border-radius: 8px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
             padding: 30px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        h1 {
-            color: #2c3e50;
             text-align: center;
-            margin-bottom: 30px;
         }
         
-        .input-section {
-            margin-bottom: 30px;
+        .header h1 {
+            margin: 0;
+            font-size: 2.2em;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .tab {
+            padding: 15px 25px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            background: white;
+            border-bottom-color: #667eea;
+            color: #667eea;
+            font-weight: bold;
+        }
+        
+        .tab:hover {
+            background: #e9ecef;
+        }
+        
+        .tab-content {
+            display: none;
+            padding: 30px;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
         }
         
         label {
             display: block;
             font-weight: bold;
-            margin-bottom: 10px;
-            color: #34495e;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
         }
         
         textarea {
-            width: 100%;
             height: 200px;
-            padding: 15px;
-            border: 2px solid #bdc3c7;
-            border-radius: 5px;
             font-family: 'Courier New', monospace;
-            font-size: 14px;
             resize: vertical;
         }
         
-        textarea:focus {
-            border-color: #3498db;
-            outline: none;
+        .row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
         }
         
-        .button-group {
-            text-align: center;
-            margin: 20px 0;
-        }
-        
-        button {
-            background: #3498db;
+        .btn {
+            background: #667eea;
             color: white;
             border: none;
-            padding: 12px 25px;
-            border-radius: 5px;
+            padding: 12px 24px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 16px;
-            margin: 0 10px;
             transition: background 0.3s;
         }
         
-        button:hover {
-            background: #2980b9;
+        .btn:hover {
+            background: #5a6fd8;
         }
         
-        .download-btn {
-            background: #27ae60;
+        .btn-secondary {
+            background: #6c757d;
         }
         
-        .download-btn:hover {
-            background: #219a52;
+        .btn-secondary:hover {
+            background: #5a6268;
         }
         
-        .clear-btn {
-            background: #e74c3c;
+        .btn-success {
+            background: #28a745;
         }
         
-        .clear-btn:hover {
-            background: #c0392b;
+        .btn-success:hover {
+            background: #218838;
         }
         
         .output-section {
             margin-top: 30px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
         }
         
-        .output-box {
-            background: #2c3e50;
-            color: #ecf0f1;
+        .query-output {
+            background: #2d3748;
+            color: #e2e8f0;
             padding: 20px;
-            border-radius: 5px;
+            border-radius: 6px;
             font-family: 'Courier New', monospace;
             font-size: 14px;
             white-space: pre-wrap;
             max-height: 400px;
             overflow-y: auto;
-            border: 2px solid #34495e;
+            margin-bottom: 15px;
+        }
+        
+        .field-mapping {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .field-row {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr 80px;
+            gap: 10px;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .field-row:last-child {
+            border-bottom: none;
+        }
+        
+        .field-header {
+            font-weight: bold;
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        
+        .rename-input {
+            font-size: 12px;
+            padding: 6px;
         }
         
         .stats {
-            background: #ecf0f1;
-            padding: 15px;
-            border-radius: 5px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
             margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2em;
             font-weight: bold;
-            color: #2c3e50;
         }
         
-        .format-options {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 5px;
-            border: 1px solid #dee2e6;
-        }
-        
-        .format-options label {
-            font-weight: normal;
-            margin-right: 20px;
-            cursor: pointer;
-        }
-        
-        .format-options input[type="radio"] {
-            margin-right: 5px;
+        .stat-label {
+            opacity: 0.9;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Extractor de Estructura de Tablas SQL</h1>
-        
-        <div class="input-section">
-            <label for="sqlInput">Pega aquí tu CREATE TABLE statement:</label>
-            <textarea id="sqlInput" placeholder="CREATE TABLE schema.table_name (
-    column1 VARCHAR(100),
-    column2 INT,
-    column3 DECIMAL(10,2)
-    ...
-)"></textarea>
+        <div class="header">
+            <h1>Generador de Queries de Ratificación v2</h1>
+            <p>Automatización completa del proceso de cuadre DDV vs EDV</p>
         </div>
         
-        <div class="format-options">
-            <strong>Formato de salida:</strong><br><br>
-            <label><input type="radio" name="format" value="csv" checked> CSV (col_name, data_type, comment)</label>
-            <label><input type="radio" name="format" value="excel"> Excel compatible</label>
-            <label><input type="radio" name="format" value="markdown"> Markdown table</label>
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('parametros')">1. Parámetros</div>
+            <div class="tab" onclick="switchTab('describe')">2. Describe Tabla</div>
+            <div class="tab" onclick="switchTab('queries')">3. Queries Generados</div>
+            <div class="tab" onclick="switchTab('export')">4. Exportar Excel</div>
         </div>
         
-        <div class="button-group">
-            <button onclick="extractStructure()">Extraer Estructura</button>
-            <button class="download-btn" onclick="downloadResults()" id="downloadBtn" style="display: none;">Descargar CSV</button>
-            <button class="clear-btn" onclick="clearAll()">Limpiar</button>
+        <!-- TAB 1: PARÁMETROS -->
+        <div id="parametros" class="tab-content active">
+            <h3>Configuración de Esquemas y Tablas</h3>
+            
+            <div class="row">
+                <div class="form-group">
+                    <label>Esquema DDV (Producción)</label>
+                    <input type="text" id="esquemaDDV" placeholder="catalog_lhcl_prod_bcp.bcp_ddv_matrizvariables_v">
+                </div>
+                <div class="form-group">
+                    <label>Tabla DDV</label>
+                    <input type="text" id="tablaDDV" placeholder="hm_matrizdemografico">
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="form-group">
+                    <label>Esquema EDV (Desarrollo)</label>
+                    <input type="text" id="esquemaEDV" placeholder="catalog_lhcl_prod_bcp_expl.bcp_edv_trdata_012">
+                </div>
+                <div class="form-group">
+                    <label>Tabla EDV</label>
+                    <input type="text" id="tablaEDV" placeholder="hm_matrizdemografico_ruben">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Períodos a evaluar (separados por coma)</label>
+                <input type="text" id="periodos" placeholder="202505, 202506, 202507" value="202505, 202506, 202507">
+            </div>
+            
+            <div class="form-group">
+                <label>Reglas de renombrado para EDV (formato: original:nuevo)</label>
+                <textarea id="renameRules" placeholder="codclaveunicocli:cod_uni_cocli&#10;otrocampo:otro_campo_nuevo">codclaveunicocli:cod_uni_cocli</textarea>
+            </div>
+            
+            <button class="btn" onclick="saveParameters()">Guardar Parámetros</button>
         </div>
         
-        <div class="output-section" id="outputSection" style="display: none;">
-            <div class="stats" id="stats"></div>
-            <label for="output">Resultado:</label>
-            <div class="output-box" id="output"></div>
+        <!-- TAB 2: DESCRIBE TABLA -->
+        <div id="describe" class="tab-content">
+            <h3>Estructura de la Tabla</h3>
+            
+            <div class="form-group">
+                <label>CREATE TABLE Statement</label>
+                <textarea id="createTableInput" placeholder="Pega aquí tu CREATE TABLE..."></textarea>
+            </div>
+            
+            <button class="btn" onclick="parseCreateTable()">Analizar Estructura</button>
+            
+            <div id="fieldMapping" style="display: none;">
+                <h4>Campos Detectados y Mapeo</h4>
+                <div class="field-mapping">
+                    <div class="field-row">
+                        <div class="field-header">Campo Original</div>
+                        <div class="field-header">Tipo de Dato</div>
+                        <div class="field-header">Función</div>
+                        <div class="field-header">EDV</div>
+                    </div>
+                    <div id="fieldMappingContent"></div>
+                </div>
+                
+                <div class="stats" id="statsSection"></div>
+            </div>
+        </div>
+        
+        <!-- TAB 3: QUERIES GENERADOS -->
+        <div id="queries" class="tab-content">
+            <h3>Queries de Ratificación</h3>
+            
+            <button class="btn btn-success" onclick="generateAllQueries()">Generar Todos los Queries</button>
+            
+            <div id="queryOutputs"></div>
+        </div>
+        
+        <!-- TAB 4: EXPORTAR EXCEL -->
+        <div id="export" class="tab-content">
+            <h3>Exportar a Excel</h3>
+            
+            <div class="form-group">
+                <label>Formato de Excel</label>
+                <select id="excelFormat">
+                    <option value="standard">Formato Estándar</option>
+                    <option value="cuadre">Formato Cuadre (como template original)</option>
+                </select>
+            </div>
+            
+            <button class="btn btn-success" onclick="exportToExcel()">Generar Excel</button>
+            
+            <div id="exportPreview"></div>
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
-        let extractedData = [];
+        // Variables globales
+        let tableStructure = [];
+        let parameters = {};
+        let generatedQueries = {};
         
-        function extractStructure() {
-            const sqlInput = document.getElementById('sqlInput').value.trim();
-            const format = document.querySelector('input[name="format"]:checked').value;
+        // Cambio de tabs
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             
-            if (!sqlInput) {
+            event.target.classList.add('active');
+            document.getElementById(tabName).classList.add('active');
+        }
+        
+        // Guardar parámetros
+        function saveParameters() {
+            parameters = {
+                esquemaDDV: document.getElementById('esquemaDDV').value,
+                tablaDDV: document.getElementById('tablaDDV').value,
+                esquemaEDV: document.getElementById('esquemaEDV').value,
+                tablaEDV: document.getElementById('tablaEDV').value,
+                periodos: document.getElementById('periodos').value,
+                renameRules: parseRenameRules(document.getElementById('renameRules').value)
+            };
+            
+            alert('Parámetros guardados correctamente');
+            switchTab('describe');
+        }
+        
+        // Parsear reglas de renombrado
+        function parseRenameRules(rulesText) {
+            const rules = {};
+            rulesText.split('\n').forEach(line => {
+                const [original, renamed] = line.split(':').map(s => s.trim());
+                if (original && renamed) {
+                    rules[original] = renamed;
+                }
+            });
+            return rules;
+        }
+        
+        // Parsear CREATE TABLE
+        function parseCreateTable() {
+            const createTableText = document.getElementById('createTableInput').value;
+            
+            if (!createTableText.trim()) {
                 alert('Por favor, pega un CREATE TABLE statement');
                 return;
             }
             
             try {
-                const columns = parseCreateTable(sqlInput);
-                extractedData = columns;
-                displayResults(columns, format);
-                document.getElementById('downloadBtn').style.display = 'inline-block';
-                document.getElementById('outputSection').style.display = 'block';
+                tableStructure = extractTableStructure(createTableText);
+                displayFieldMapping();
+                document.getElementById('fieldMapping').style.display = 'block';
             } catch (error) {
-                alert('Error al procesar el SQL: ' + error.message);
+                alert('Error al analizar la tabla: ' + error.message);
             }
         }
         
-        function parseCreateTable(sql) {
-            // Limpiar el SQL y extraer la parte de columnas
+        // Extraer estructura de tabla
+        function extractTableStructure(sql) {
             const cleanSql = sql.replace(/\s+/g, ' ').trim();
-            
-            // Buscar el patrón CREATE TABLE ... (columnas)
             const tableMatch = cleanSql.match(/CREATE\s+TABLE\s+[^\(]+\(\s*(.*?)\s*\)\s*(?:USING|PARTITIONED|LOCATION|TBLPROPERTIES|$)/i);
             
             if (!tableMatch) {
-                throw new Error('No se pudo encontrar la definición de columnas en el CREATE TABLE');
+                throw new Error('No se pudo encontrar la definición de columnas');
             }
             
             const columnsText = tableMatch[1];
             const columns = [];
-            
-            // Dividir por comas, pero respetando paréntesis
             const columnDefinitions = splitByComma(columnsText);
             
             for (let colDef of columnDefinitions) {
                 colDef = colDef.trim();
                 if (!colDef) continue;
                 
-                // Extraer nombre de columna y tipo de dato
                 const parts = colDef.split(/\s+/);
                 if (parts.length >= 2) {
                     const columnName = parts[0];
-                    const dataType = parts[1];
+                    let dataType = parts[1];
                     
-                    // Si el tipo tiene paréntesis, incluirlos
-                    let fullDataType = dataType;
+                    // Incluir paréntesis si existen
                     if (parts.length > 2 && parts[2].startsWith('(')) {
-                        // Buscar el paréntesis de cierre
                         let parenContent = '';
                         for (let i = 2; i < parts.length; i++) {
                             parenContent += parts[i];
                             if (parts[i].includes(')')) break;
                         }
-                        fullDataType = dataType + parenContent;
+                        dataType += parenContent;
                     }
                     
+                    // Determinar función (count o sum)
+                    const aggregateFunction = getAggregateFunction(dataType);
+                    
                     columns.push({
-                        col_name: columnName,
-                        data_type: fullDataType,
-                        comment: null
+                        columnName,
+                        dataType,
+                        aggregateFunction,
+                        edvName: parameters.renameRules?.[columnName] || columnName
                     });
                 }
             }
@@ -242,117 +432,261 @@
             return columns;
         }
         
+        // Dividir por comas respetando paréntesis
         function splitByComma(text) {
             const result = [];
             let current = '';
             let parenCount = 0;
             
-            for (let i = 0; i < text.length; i++) {
-                const char = text[i];
-                
-                if (char === '(') {
-                    parenCount++;
-                } else if (char === ')') {
-                    parenCount--;
-                } else if (char === ',' && parenCount === 0) {
-                    if (current.trim()) {
-                        result.push(current.trim());
-                    }
+            for (let char of text) {
+                if (char === '(') parenCount++;
+                else if (char === ')') parenCount--;
+                else if (char === ',' && parenCount === 0) {
+                    if (current.trim()) result.push(current.trim());
                     current = '';
                     continue;
                 }
-                
                 current += char;
             }
             
-            if (current.trim()) {
-                result.push(current.trim());
-            }
-            
+            if (current.trim()) result.push(current.trim());
             return result;
         }
         
-        function displayResults(columns, format) {
-            const stats = document.getElementById('stats');
-            const output = document.getElementById('output');
-            
-            stats.textContent = `Columnas extraídas: ${columns.length}`;
-            
-            let result = '';
-            
-            if (format === 'csv') {
-                result = 'col_name,data_type,comment\n';
-                result += columns.map(col => `${col.col_name},${col.data_type},${col.comment || 'null'}`).join('\n');
-            } else if (format === 'excel') {
-                result = 'col_name\tdata_type\tcomment\n';
-                result += columns.map(col => `${col.col_name}\t${col.data_type}\t${col.comment || 'null'}`).join('\n');
-            } else if (format === 'markdown') {
-                result = '| col_name | data_type | comment |\n';
-                result += '|----------|-----------|----------|\n';
-                result += columns.map(col => `| ${col.col_name} | ${col.data_type} | ${col.comment || 'null'} |`).join('\n');
+        // Determinar función de agregación
+        function getAggregateFunction(dataType) {
+            const upperType = dataType.toUpperCase();
+            if (upperType === 'DOUBLE' || upperType.includes('DECIMAL')) {
+                return 'sum';
             }
-            
-            output.textContent = result;
+            return 'count';
         }
         
-        function downloadResults() {
-            if (extractedData.length === 0) {
-                alert('No hay datos para descargar');
+        // Mostrar mapeo de campos
+        function displayFieldMapping() {
+            const content = document.getElementById('fieldMappingContent');
+            content.innerHTML = '';
+            
+            let countFields = 0, sumFields = 0;
+            
+            tableStructure.forEach((field, index) => {
+                if (field.aggregateFunction === 'count') countFields++;
+                else sumFields++;
+                
+                const row = document.createElement('div');
+                row.className = 'field-row';
+                row.innerHTML = `
+                    <div>${field.columnName}</div>
+                    <div>${field.dataType}</div>
+                    <div>${field.aggregateFunction}()</div>
+                    <input type="text" class="rename-input" value="${field.edvName}" 
+                           onchange="updateFieldName(${index}, this.value)">
+                `;
+                content.appendChild(row);
+            });
+            
+            // Mostrar estadísticas
+            const statsSection = document.getElementById('statsSection');
+            statsSection.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${tableStructure.length}</div>
+                    <div class="stat-label">Total Campos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${countFields}</div>
+                    <div class="stat-label">COUNT() Campos</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${sumFields}</div>
+                    <div class="stat-label">SUM() Campos</div>
+                </div>
+            `;
+        }
+        
+        // Actualizar nombre de campo
+        function updateFieldName(index, newName) {
+            tableStructure[index].edvName = newName;
+        }
+        
+        // Generar todos los queries
+        function generateAllQueries() {
+            if (!tableStructure.length || !parameters.esquemaDDV) {
+                alert('Primero completa los parámetros y la estructura de tabla');
                 return;
             }
             
-            const format = document.querySelector('input[name="format"]:checked').value;
-            let content = '';
-            let filename = '';
-            let mimeType = '';
+            generatedQueries = {
+                universos: generateUniversosQuery(),
+                agrupados: generateAgrupadosQuery(),
+                minus1: generateMinusQuery(true),
+                minus2: generateMinusQuery(false)
+            };
             
-            if (format === 'csv' || format === 'excel') {
-                content = 'col_name,data_type,comment\n';
-                content += extractedData.map(col => `"${col.col_name}","${col.data_type}","${col.comment || 'null'}"`).join('\n');
-                filename = 'table_structure.csv';
-                mimeType = 'text/csv';
-            } else if (format === 'markdown') {
-                content = '| col_name | data_type | comment |\n';
-                content += '|----------|-----------|----------|\n';
-                content += extractedData.map(col => `| ${col.col_name} | ${col.data_type} | ${col.comment || 'null'} |`).join('\n');
-                filename = 'table_structure.md';
-                mimeType = 'text/markdown';
+            displayQueries();
+            switchTab('queries');
+        }
+        
+        // Generar query de universos
+        function generateUniversosQuery() {
+            const periodos = parameters.periodos.replace(/\s/g, '');
+            
+            return `--UNIVERSOS--
+select edv.codmes, numreg_ddv, numreg_edv, numreg_ddv - numreg_edv as diff_numreg 
+from (
+    select codmes, count(*) numreg_edv 
+    from ${parameters.esquemaEDV}.${parameters.tablaEDV} 
+    where codmes in ( ${periodos} ) 
+    group by codmes
+) edv 
+inner join (
+    select codmes, count(*) numreg_ddv 
+    from ${parameters.esquemaDDV}.${parameters.tablaDDV} 
+    where codmes in ( ${periodos} ) 
+    group by codmes
+) ddv on edv.codmes = ddv.codmes 
+order by edv.codmes;`;
+        }
+        
+        // Generar query de agrupados
+        function generateAgrupadosQuery() {
+            const periodos = parameters.periodos.replace(/\s/g, '');
+            const selectFields = tableStructure.map(field => 
+                `${field.aggregateFunction}(${field.edvName})`
+            ).join(', ');
+            
+            const selectFieldsDDV = tableStructure.map(field => 
+                `${field.aggregateFunction}(${field.columnName})`
+            ).join(', ');
+            
+            return `--AGRUPADOS--
+select * from (
+select 
+'EDV' capa, codmes, ${selectFields}
+from ${parameters.esquemaEDV}.${parameters.tablaEDV} 
+where codmes in ( ${periodos} ) 
+group by codmes
+union all
+select 
+'DDV' capa, codmes, ${selectFieldsDDV}
+from ${parameters.esquemaDDV}.${parameters.tablaDDV} 
+where codmes in ( ${periodos} ) 
+group by codmes
+) order by codmes, capa`;
+        }
+        
+        // Generar query MINUS
+        function generateMinusQuery(edvFirst) {
+            const periodos = parameters.periodos.replace(/\s/g, '');
+            const fieldsEDV = tableStructure.map(f => f.edvName).join(',');
+            const fieldsDDV = tableStructure.map(f => f.columnName).join(',');
+            
+            if (edvFirst) {
+                return `--MINUS EDV - DDV--
+select ${fieldsEDV}
+from ${parameters.esquemaEDV}.${parameters.tablaEDV}
+where codmes in ( ${periodos} )
+minus all
+select ${fieldsDDV}
+from ${parameters.esquemaDDV}.${parameters.tablaDDV}
+where codmes in ( ${periodos} )`;
+            } else {
+                return `--MINUS DDV - EDV--
+select ${fieldsDDV}
+from ${parameters.esquemaDDV}.${parameters.tablaDDV}
+where codmes in ( ${periodos} )
+minus all
+select ${fieldsEDV}
+from ${parameters.esquemaEDV}.${parameters.tablaEDV}
+where codmes in ( ${periodos} )`;
+            }
+        }
+        
+        // Mostrar queries generados
+        function displayQueries() {
+            const outputDiv = document.getElementById('queryOutputs');
+            outputDiv.innerHTML = '';
+            
+            const queryTypes = [
+                { key: 'universos', title: 'Query de Universos' },
+                { key: 'agrupados', title: 'Query de Agrupados' },
+                { key: 'minus1', title: 'Query MINUS (EDV - DDV)' },
+                { key: 'minus2', title: 'Query MINUS (DDV - EDV)' }
+            ];
+            
+            queryTypes.forEach(({ key, title }) => {
+                const section = document.createElement('div');
+                section.className = 'output-section';
+                section.innerHTML = `
+                    <h4>${title}</h4>
+                    <div class="query-output">${generatedQueries[key]}</div>
+                    <button class="btn btn-secondary" onclick="copyQuery('${key}')">Copiar Query</button>
+                `;
+                outputDiv.appendChild(section);
+            });
+        }
+        
+        // Copiar query al portapapeles
+        function copyQuery(queryKey) {
+            navigator.clipboard.writeText(generatedQueries[queryKey]);
+            alert('Query copiado al portapapeles');
+        }
+        
+        // Exportar a Excel
+        function exportToExcel() {
+            if (!Object.keys(generatedQueries).length) {
+                alert('Primero genera los queries');
+                return;
             }
             
-            const blob = new Blob([content], { type: mimeType });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+            const wb = XLSX.utils.book_new();
+            
+            // Hoja 1: Parámetros
+            const wsParams = XLSX.utils.aoa_to_sheet([
+                ['ESQUEMA', 'TABLA', 'FINAL (SE USARA EN LAS QUERYS DE RATIFICACION)'],
+                ['TABLA EDV', `${parameters.esquemaEDV}`, `${parameters.esquemaEDV}.${parameters.tablaEDV}`],
+                ['TABLA DDV', `${parameters.esquemaDDV}`, `${parameters.esquemaDDV}.${parameters.tablaDDV}`],
+                [],
+                ['PERIODOS', parameters.periodos.split(',')[0].trim(), `in ( ${parameters.periodos} )`]
+            ]);
+            XLSX.utils.book_append_sheet(wb, wsParams, 'PARAMETROS');
+            
+            // Hoja 2: Describe
+            const describeData = [
+                ['col_name', 'data_type', 'comment', 'col_name_EDV', 'METRICA', 'METRICA EDV', 'QUERY'],
+                ...tableStructure.map(field => [
+                    field.columnName,
+                    field.dataType,
+                    'null',
+                    field.edvName,
+                    `${field.aggregateFunction}(${field.columnName})`,
+                    `${field.aggregateFunction}(${field.edvName})`,
+                    `${field.aggregateFunction === 'count' ? 'DDV' : 'EDV'} ${field.aggregateFunction}(${field.columnName})`
+                ])
+            ];
+            const wsDescribe = XLSX.utils.aoa_to_sheet(describeData);
+            XLSX.utils.book_append_sheet(wb, wsDescribe, 'TABLA DESCRIBE');
+            
+            // Hoja 3: Queries
+            const queryData = [
+                ['TIPO', 'QUERY'],
+                ['UNIVERSOS', generatedQueries.universos],
+                ['AGRUPADOS', generatedQueries.agrupados],
+                ['MINUS_EDV_DDV', generatedQueries.minus1],
+                ['MINUS_DDV_EDV', generatedQueries.minus2]
+            ];
+            const wsQueries = XLSX.utils.aoa_to_sheet(queryData);
+            XLSX.utils.book_append_sheet(wb, wsQueries, 'QUERYS DE RATIFICACION');
+            
+            // Descargar archivo
+            XLSX.writeFile(wb, 'queries_ratificacion.xlsx');
         }
         
-        function clearAll() {
-            document.getElementById('sqlInput').value = '';
-            document.getElementById('output').textContent = '';
-            document.getElementById('stats').textContent = '';
-            document.getElementById('outputSection').style.display = 'none';
-            document.getElementById('downloadBtn').style.display = 'none';
-            extractedData = [];
-        }
-        
-        // Cargar datos de ejemplo al cargar la página
+        // Cargar ejemplo al inicio
         window.onload = function() {
-            const exampleSQL = `CREATE TABLE catalog_lhcl_prod_bcp.bcp_ddv_matrizvariables.hm_matriztransaccioncanalpagotransferencia (
-    codclaveunicocli VARCHAR(128),
-    codclavepartycli VARCHAR(128),
-    codinternocomputacional VARCHAR(30),
-    codmesanalisis INT,
-    can_flg_tmo_tot_trf_u1m INT,
-    can_mto_tmo_tot_trf_u1m DECIMAL(23,6),
-    fecrutina DATE,
-    fecactualizacionregistro TIMESTAMP,
-    codmes INT
-)`;
-            document.getElementById('sqlInput').value = exampleSQL;
+            document.getElementById('esquemaDDV').value = 'catalog_lhcl_prod_bcp.bcp_ddv_matrizvariables_v';
+            document.getElementById('tablaDDV').value = 'hm_matrizdemografico';
+            document.getElementById('esquemaEDV').value = 'catalog_lhcl_prod_bcp_expl.bcp_edv_trdata_012';
+            document.getElementById('tablaEDV').value = 'hm_matrizdemografico_ruben';
         };
     </script>
 </body>
