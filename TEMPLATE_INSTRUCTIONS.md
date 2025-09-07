@@ -52,10 +52,17 @@
 - `<<UNIV_SQL>>` / `<<AGR_SQL>>` / `<<MINUS_SQL>>` - Queries específicos
 - `<<UNIV_TABLA>>` / `<<AGR_TABLA>>` / `<<MINUS_TABLA>>` - Tablas específicas
 
-#### Placeholders Alternativos:
-- `{{UNIVERSOS_SQL}}` - Formato alternativo con llaves
-- `{{UNIVERSOS_TABLA}}` - Formato alternativo con llaves
+#### Placeholders Alternativos Soportados:
+- `{{UNIVERSOS_SQL}}` - Formato con llaves dobles
+- `[UNIVERSOS_SQL]` - Formato con corchetes
+- `(UNIVERSOS_SQL)` - Formato con paréntesis
+- `%UNIVERSOS_SQL%` - Formato con porcentajes
 - (Y todos los demás con el mismo formato)
+
+#### Para Pestañas Específicas:
+- `<<UNIV_SQL>>` / `<<UNIV_TABLA>>` - Universos
+- `<<AGR_SQL>>` / `<<AGR_TABLA>>` - Agrupados
+- `<<MINUS_SQL>>` / `<<MINUS_TABLA>>` - Minus
 
 ## 🔧 Características Técnicas
 
@@ -64,18 +71,23 @@
 - ✅ Valida placeholders y nombres definidos
 - ✅ Muestra información detallada del template
 - ✅ Vista previa del contenido
+- ✅ **CORREGIDO**: Manejo robusto de nombres definidos de Excel
 
 ### Manejo de Contenido
 - ✅ Respeta límites de caracteres de Excel (32,767)
 - ✅ Divide contenido largo automáticamente
 - ✅ Mantiene formato y estilos del template
 - ✅ Inserta datos en las pestañas correctas
+- ✅ **NUEVO**: Soporte para múltiples formatos de placeholders
+- ✅ **NUEVO**: Detección automática de pestañas compatibles
 
 ### Interfaz de Usuario
 - ✅ Carga con indicador de progreso
 - ✅ Información detallada del template cargado
 - ✅ Botones de vista previa y limpieza
 - ✅ Notificaciones de éxito/error
+- ✅ **NUEVO**: Análisis de compatibilidad de pestañas
+- ✅ **NUEVO**: Contador de elementos insertados
 
 ## 🎨 Personalización del Template
 
@@ -94,20 +106,34 @@
 
 ## 🔍 Solución de Problemas
 
+### ✅ **ERROR CORREGIDO**: `workbook.definedNames.get is not a function`
+**Problema**: Error al cargar templates que no tienen nombres definidos de Excel.
+**Solución**: El sistema ahora maneja robustamente este error y continúa funcionando con placeholders.
+
 ### Template No Se Carga
 - Verifica que el archivo sea .xlsx o .xls
 - Asegúrate de que tenga al menos una pestaña con placeholders
 - Revisa que los placeholders estén escritos correctamente
+- **NUEVO**: El sistema ahora soporta múltiples formatos de placeholders
 
 ### No Se Insertan Datos
 - Verifica que los placeholders estén en el template
 - Asegúrate de que los queries estén generados
 - Revisa la consola del navegador para errores
+- **NUEVO**: Revisa el contador de elementos insertados en la consola
 
 ### Error de Validación
 - El template debe tener al menos una pestaña principal
 - Debe contener placeholders o nombres definidos
 - Verifica que el archivo no esté corrupto
+- **NUEVO**: El sistema ahora es más tolerante con diferentes formatos
+
+### Pestañas No Detectadas
+- Asegúrate de que los nombres de pestañas contengan palabras clave:
+  - "universo", "universos", "univ" para pestañas de universos
+  - "agrupado", "agrupados", "agr" para pestañas de agrupados
+  - "minus", "diferencia", "diff" para pestañas de minus
+  - "cuadre", "resumen", "summary", "main" para pestaña principal
 
 ## 📞 Soporte
 
