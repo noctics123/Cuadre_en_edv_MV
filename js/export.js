@@ -1,11 +1,15 @@
 /**
  * Módulo para exportación a Excel y otros formatos
- * VERSIÓN ACTUALIZADA CON EXCELJS Y DISEÑO PROFESIONAL
+ * SISTEMA COMPLETO: Template Upload + ExcelJS + Funciones Originales
  */
 const ExportModule = {
     
+    // Template cargado
+    templateBuffer: null,
+    templateWorkbook: null,
+    
     /**
-     * Exporta Excel específico para V3 - Formato Cuadre EDV (DISEÑO PROFESIONAL CON EXCELJS)
+     * FUNCIÓN PRINCIPAL: Exporta Excel usando template upload o generación automática
      */
     async exportCuadreEDV() {
         const queries = QueryModule.getGeneratedQueries();
@@ -17,63 +21,486 @@ const ExportModule = {
         }
 
         try {
-            // Importar ExcelJS dinámicamente
-            const ExcelJS = await this.loadExcelJS();
-            
-            // Crear workbook
-            const workbook = new ExcelJS.Workbook();
-            const worksheet = workbook.addWorksheet('Cuadre DDV vs EDV', {
-                pageSetup: { paperSize: 9, orientation: 'landscape' }
-            });
-
-            // Configurar anchos de columna (A=15, B-K=20-24 cada una)
-            worksheet.columns = [
-                { width: 15 }, // A - Etiquetas
-                { width: 22 }, // B - Contenido
-                { width: 22 }, // C
-                { width: 22 }, // D
-                { width: 22 }, // E
-                { width: 22 }, // F
-                { width: 22 }, // G
-                { width: 22 }, // H
-                { width: 22 }, // I
-                { width: 22 }, // J
-                { width: 22 }  // K
-            ];
-
-            let currentRow = 1;
-
-            // 1. TÍTULO PRINCIPAL
-            currentRow = this.addMainTitle(worksheet, currentRow);
-            
-            // Congelar paneles en fila 2
-            worksheet.views = [{ state: 'frozen', ySplit: 2 }];
-
-            // 2. SECCIÓN UNIVERSOS
-            currentRow = await this.addUniversosSection(worksheet, currentRow, queries.universos, params);
-
-            // 3. SECCIÓN AGRUPADOS  
-            currentRow = await this.addAgrupadosSection(worksheet, currentRow, queries.agrupados, params);
-
-            // 4. SECCIÓN MINUS
-            currentRow = await this.addMinusSection(worksheet, currentRow, queries.minus1, queries.minus2, params);
-
-            // Generar archivo y descargar
-            const tableName = params.tablaDDV || 'TABLA';
-            const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
-            const filename = `cuadre_${tableName.toUpperCase()}_${periods}.xlsx`;
-
-            const buffer = await workbook.xlsx.writeBuffer();
-            this.downloadExcelBuffer(buffer, filename);
-
-            if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
-                UIModule.showNotification(`Excel de cuadre generado: ${filename}`, 'success', 5000);
+            // Si hay template cargado, usar sistema de template
+            if (this.templateBuffer) {
+                await this.exportWithTemplate(queries, params);
+            } else {
+                // Usar generación automática con ExcelJS
+                await this.exportWithAutoGeneration(queries, params);
             }
-
         } catch (error) {
             console.error('Error generando Excel:', error);
             alert('Error al generar Excel: ' + error.message);
         }
+    },
+
+    /**
+     * Exporta usando template cargado
+     */
+    async exportWithTemplate(queries, params) {
+        const ExcelJS = await this.loadExcelJS();
+        
+        // Cargar template desde buffer
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(this.templateBuffer);
+        
+        // Buscar la pestaña "Cuadre"
+        const worksheet = workbook.getWorksheet('Cuadre') || workbook.worksheets[0];
+        if (!worksheet) {
+            throw new Error('No se encontró la pestaña "Cuadre" en el template');
+        }
+
+        // Preparar datos para inserción
+        const data = {
+            sqlUniv: queries.universos,
+            sqlAgr: queries.agrupados, 
+            sqlMinus: this.combineMinus(queries.minus1, queries.minus2),
+            tablaUniv: this.generateUniversosTable(params),
+            tablaAgr: this.generateAgrupadosTable(params),
+            tablaMinus: this.generateMinusTable(params)
+        };
+
+        // Insertar contenido usando nombres definidos o fallback
+        await this.insertContentIntoTemplate(worksheet, data);
+
+        // Generar archivo y descargar
+        const filename = this.generateTemplateFilename(params);
+        const buffer = await workbook.xlsx.writeBuffer();
+        this.downloadExcelBuffer(buffer, filename);
+
+        if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
+            UIModule.showNotification(`Excel generado con template: ${filename}`, 'success', 5000);
+        }
+    },
+
+    /**
+     * Exporta con generación automática usando ExcelJS
+     */
+    async exportWithAutoGeneration(queries, params) {
+        const ExcelJS = await this.loadExcelJS();
+        
+        // Crear workbook
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Cuadre DDV vs EDV', {
+            pageSetup: { paperSize: 9, orientation: 'landscape' }
+        });
+
+        // Configurar anchos de columna
+        worksheet.columns = [
+            { width: 15 }, { width: 22 }, { width: 22 }, { width: 22 },
+            { width: 22 }, { width: 22 }, { width: 22 }, { width: 22 },
+            { width: 22 }, { width: 22 }, { width: 22 }
+        ];
+
+        let currentRow = 1;
+
+        // Construir Excel automáticamente
+        currentRow = this.addMainTitle(worksheet, currentRow);
+        worksheet.views = [{ state: 'frozen', ySplit: 2 }];
+        currentRow = await this.addUniversosSection(worksheet, currentRow, queries.universos, params);
+        currentRow = await this.addAgrupadosSection(worksheet, currentRow, queries.agrupados, params);
+        currentRow = await this.addMinusSection(worksheet, currentRow, queries.minus1, queries.minus2, params);
+
+        // Generar archivo y descargar
+        const filename = this.generateAutoFilename(params);
+        const buffer = await workbook.xlsx.writeBuffer();
+        this.downloadExcelBuffer(buffer, filename);
+
+        if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
+            UIModule.showNotification(`Excel generado automáticamente: ${filename}`, 'success', 5000);
+        }
+    },
+
+    /**
+     * Cargar template Excel
+     */
+    async loadTemplate() {
+        try {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.xlsx,.xls';
+            
+            return new Promise((resolve, reject) => {
+                input.onchange = async (event) => {
+                    const file = event.target.files[0];
+                    if (!file) {
+                        reject(new Error('No se seleccionó archivo'));
+                        return;
+                    }
+
+                    try {
+                        const arrayBuffer = await file.arrayBuffer();
+                        this.templateBuffer = arrayBuffer;
+                        
+                        await this.validateTemplate();
+                        
+                        const templateInfo = document.getElementById('templateInfo');
+                        if (templateInfo) {
+                            templateInfo.innerHTML = `
+                                <div class="template-loaded">
+                                    ✅ Template cargado: <strong>${file.name}</strong>
+                                    <br><small>Listo para generar Excel con formato personalizado</small>
+                                </div>
+                            `;
+                        }
+                        
+                        resolve(file.name);
+                        
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                
+                input.click();
+            });
+            
+        } catch (error) {
+            alert('Error cargando template: ' + error.message);
+        }
+    },
+
+    /**
+     * Valida que el template tenga la estructura esperada
+     */
+    async validateTemplate() {
+        const ExcelJS = await this.loadExcelJS();
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(this.templateBuffer);
+        
+        const worksheet = workbook.getWorksheet('Cuadre');
+        if (!worksheet) {
+            throw new Error('El template debe tener una pestaña llamada "Cuadre"');
+        }
+
+        const requiredAnchors = [
+            'ANCHOR_UNIV_SQL', 'ANCHOR_UNIV_TABLA',
+            'ANCHOR_AGR_SQL', 'ANCHOR_AGR_TABLA', 
+            'ANCHOR_MINUS_SQL', 'ANCHOR_MINUS_TABLA'
+        ];
+
+        let foundAnchors = 0;
+        let foundPlaceholders = 0;
+
+        // Verificar nombres definidos
+        if (workbook.definedNames) {
+            requiredAnchors.forEach(anchor => {
+                if (workbook.definedNames.get(anchor)) {
+                    foundAnchors++;
+                }
+            });
+        }
+
+        // Verificar placeholders si no hay nombres definidos
+        if (foundAnchors === 0) {
+            const placeholders = [
+                '<<UNIVERSOS_SQL>>', '<<UNIVERSOS_TABLA>>',
+                '<<AGRUPADOS_SQL>>', '<<AGRUPADOS_TABLA>>',
+                '<<MINUS_SQL>>', '<<MINUS_TABLA>>'
+            ];
+
+            worksheet.eachRow((row, rowNumber) => {
+                row.eachCell((cell, colNumber) => {
+                    if (cell.value && typeof cell.value === 'string') {
+                        placeholders.forEach(placeholder => {
+                            if (cell.value.includes(placeholder)) {
+                                foundPlaceholders++;
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        if (foundAnchors === 0 && foundPlaceholders === 0) {
+            throw new Error('Template inválido: No se encontraron nombres definidos ni placeholders esperados');
+        }
+
+        console.log(`Template validado: ${foundAnchors} nombres definidos, ${foundPlaceholders} placeholders encontrados`);
+    },
+
+    /**
+     * Inserta contenido en el template usando nombres definidos o fallback
+     */
+    async insertContentIntoTemplate(worksheet, data) {
+        const workbook = worksheet.workbook;
+
+        const contentMap = [
+            { anchor: 'ANCHOR_UNIV_SQL', placeholder: '<<UNIVERSOS_SQL>>', content: data.sqlUniv, type: 'sql' },
+            { anchor: 'ANCHOR_UNIV_TABLA', placeholder: '<<UNIVERSOS_TABLA>>', content: data.tablaUniv, type: 'table' },
+            { anchor: 'ANCHOR_AGR_SQL', placeholder: '<<AGRUPADOS_SQL>>', content: data.sqlAgr, type: 'sql' },
+            { anchor: 'ANCHOR_AGR_TABLA', placeholder: '<<AGRUPADOS_TABLA>>', content: data.tablaAgr, type: 'table' },
+            { anchor: 'ANCHOR_MINUS_SQL', placeholder: '<<MINUS_SQL>>', content: data.sqlMinus, type: 'sql' },
+            { anchor: 'ANCHOR_MINUS_TABLA', placeholder: '<<MINUS_TABLA>>', content: data.tablaMinus, type: 'table' }
+        ];
+
+        for (const item of contentMap) {
+            try {
+                const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder);
+                if (position) {
+                    if (item.type === 'sql') {
+                        await this.insertSQLContent(worksheet, position, item.content);
+                    } else if (item.type === 'table') {
+                        await this.insertTableContent(worksheet, position, item.content);
+                    }
+                }
+            } catch (error) {
+                console.warn(`No se pudo insertar ${item.anchor}:`, error.message);
+            }
+        }
+    },
+
+    /**
+     * Encuentra la posición donde insertar contenido
+     */
+    findContentPosition(workbook, worksheet, anchorName, placeholder) {
+        // Intentar nombre definido primero
+        if (workbook.definedNames) {
+            const definedName = workbook.definedNames.get(anchorName);
+            if (definedName) {
+                const match = definedName.value.match(/([^!]+)!\$([A-Z]+)\$(\d+)/);
+                if (match) {
+                    const col = this.columnLetterToNumber(match[2]);
+                    const row = parseInt(match[3]);
+                    return { row, col };
+                }
+            }
+        }
+
+        // Fallback: buscar placeholder
+        let position = null;
+        worksheet.eachRow((row, rowNumber) => {
+            row.eachCell((cell, colNumber) => {
+                if (cell.value && typeof cell.value === 'string' && cell.value.includes(placeholder)) {
+                    position = { row: rowNumber, col: colNumber };
+                    cell.value = cell.value.replace(placeholder, '').trim() || null;
+                }
+            });
+        });
+
+        return position;
+    },
+
+    /**
+     * Inserta contenido SQL respetando límites de caracteres
+     */
+    async insertSQLContent(worksheet, position, sqlContent) {
+        if (!sqlContent) return;
+
+        const chunks = this.splitSQLIntoChunks(sqlContent, 32760);
+        let currentRow = position.row;
+        
+        chunks.forEach((chunk, index) => {
+            if (index > 0) {
+                worksheet.insertRow(currentRow, []);
+                this.copyRowStyle(worksheet, currentRow - 1, currentRow);
+            }
+
+            const startCol = 2; // Columna B
+            const endCol = 11;  // Columna K
+            
+            worksheet.mergeCells(currentRow, startCol, currentRow, endCol);
+            
+            const cell = worksheet.getCell(currentRow, startCol);
+            cell.value = this.addLineBreaks(chunk, 120);
+            
+            this.applySQLCellStyle(cell);
+            
+            const lineCount = cell.value.split('\n').length;
+            worksheet.getRow(currentRow).height = Math.max(60, lineCount * 15);
+            
+            currentRow++;
+        });
+    },
+
+    /**
+     * Inserta tabla de datos
+     */
+    async insertTableContent(worksheet, position, tableData) {
+        if (!tableData || !tableData.headers || !tableData.rows) return;
+
+        let currentRow = position.row;
+        
+        // Insertar encabezados
+        tableData.headers.forEach((header, colIndex) => {
+            const cell = worksheet.getCell(currentRow, position.col + colIndex);
+            cell.value = header;
+            this.applyHeaderCellStyle(cell);
+        });
+        
+        currentRow++;
+        
+        // Insertar datos
+        tableData.rows.forEach(rowData => {
+            rowData.forEach((value, colIndex) => {
+                const cell = worksheet.getCell(currentRow, position.col + colIndex);
+                cell.value = value;
+                this.applyDataCellStyle(cell, colIndex === 3);
+            });
+            currentRow++;
+        });
+    },
+
+    /**
+     * Aplica estilo de código SQL
+     */
+    applySQLCellStyle(cell) {
+        cell.style = {
+            font: { name: 'Consolas', size: 10, color: { argb: 'FFECEFF4' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B4252' } },
+            alignment: { horizontal: 'left', vertical: 'top', wrapText: true },
+            border: {
+                top: { style: 'thin', color: { argb: 'FF4C566A' } },
+                left: { style: 'thin', color: { argb: 'FF4C566A' } },
+                bottom: { style: 'thin', color: { argb: 'FF4C566A' } },
+                right: { style: 'thin', color: { argb: 'FF4C566A' } }
+            }
+        };
+    },
+
+    /**
+     * Aplica estilo a encabezados de tabla
+     */
+    applyHeaderCellStyle(cell) {
+        cell.style = {
+            font: { size: 11, bold: true, color: { argb: 'FF2E3440' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD8DEE9' } },
+            alignment: { horizontal: 'center', vertical: 'middle' },
+            border: {
+                top: { style: 'thin', color: { argb: 'FF4C566A' } },
+                left: { style: 'thin', color: { argb: 'FF4C566A' } },
+                bottom: { style: 'thin', color: { argb: 'FF4C566A' } },
+                right: { style: 'thin', color: { argb: 'FF4C566A' } }
+            }
+        };
+    },
+
+    /**
+     * Aplica estilo a celdas de datos
+     */
+    applyDataCellStyle(cell, isDiff = false) {
+        cell.style = {
+            font: { size: 10, color: { argb: 'FF2E3440' }, bold: isDiff },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: isDiff ? 'FFFFF8DB' : 'FFFFFFFF' } },
+            alignment: { horizontal: typeof cell.value === 'number' ? 'right' : 'left', vertical: 'middle' },
+            border: {
+                top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+            },
+            numFmt: typeof cell.value === 'number' && cell.value > 1000 ? '#,##0' : undefined
+        };
+    },
+
+    /**
+     * Copia estilo de una fila a otra
+     */
+    copyRowStyle(worksheet, sourceRow, targetRow) {
+        const sourceRowObj = worksheet.getRow(sourceRow);
+        const targetRowObj = worksheet.getRow(targetRow);
+        
+        targetRowObj.height = sourceRowObj.height;
+        
+        for (let col = 1; col <= 11; col++) {
+            const sourceCell = worksheet.getCell(sourceRow, col);
+            const targetCell = worksheet.getCell(targetRow, col);
+            if (sourceCell.style) {
+                targetCell.style = { ...sourceCell.style };
+            }
+        }
+    },
+
+    /**
+     * Convierte letra de columna a número
+     */
+    columnLetterToNumber(letter) {
+        let result = 0;
+        for (let i = 0; i < letter.length; i++) {
+            result = result * 26 + (letter.charCodeAt(i) - 'A'.charCodeAt(0) + 1);
+        }
+        return result;
+    },
+
+    /**
+     * Combina queries MINUS en una sola
+     */
+    combineMinus(minus1, minus2) {
+        let combined = '';
+        
+        if (minus1) {
+            combined += '-- MINUS 1: EDV - DDV\n';
+            combined += '-- Registros que están en EDV pero NO en DDV\n\n';
+            combined += minus1;
+            combined += '\n\n';
+        }
+        
+        if (minus2) {
+            combined += '-- MINUS 2: DDV - EDV\n';
+            combined += '-- Registros que están en DDV pero NO en EDV\n\n';
+            combined += minus2;
+        }
+        
+        return combined;
+    },
+
+    /**
+     * Genera datos de tabla para UNIVERSOS
+     */
+    generateUniversosTable(params) {
+        return {
+            headers: ['codmes', 'numreg_ddv', 'numreg_edv', 'diff_numreg', 'status'],
+            rows: [
+                [202505, 2765145, 2765145, 0, '✅ IGUALES'],
+                [202506, 2758763, 2758763, 0, '✅ IGUALES'],
+                [202507, 2787328, 2787328, 0, '✅ IGUALES']
+            ]
+        };
+    },
+
+    /**
+     * Genera datos de tabla para AGRUPADOS
+     */
+    generateAgrupadosTable(params) {
+        return {
+            headers: ['capa', 'codmes', 'count_campos', 'sum_campos'],
+            rows: [
+                ['EDV', 202505, 150, 1250000.50],
+                ['DDV', 202505, 150, 1250000.50],
+                ['EDV', 202506, 148, 1180000.25],
+                ['DDV', 202506, 148, 1180000.25]
+            ]
+        };
+    },
+
+    /**
+     * Genera datos de tabla para MINUS
+     */
+    generateMinusTable(params) {
+        return {
+            headers: ['query', 'registros_encontrados', 'status'],
+            rows: [
+                ['MINUS 1 (EDV - DDV)', 0, '✅ Sin diferencias'],
+                ['MINUS 2 (DDV - EDV)', 0, '✅ Sin diferencias']
+            ]
+        };
+    },
+
+    /**
+     * Genera nombre de archivo para template
+     */
+    generateTemplateFilename(params) {
+        const tableName = params.tablaDDV || 'TABLA';
+        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
+        return `cuadre_template_${tableName.toUpperCase()}_${periods}.xlsx`;
+    },
+
+    /**
+     * Genera nombre de archivo para auto-generación
+     */
+    generateAutoFilename(params) {
+        const tableName = params.tablaDDV || 'TABLA';
+        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
+        return `cuadre_auto_${tableName.toUpperCase()}_${periods}.xlsx`;
     },
 
     /**
@@ -84,7 +511,6 @@ const ExportModule = {
             return window.ExcelJS;
         }
 
-        // Cargar ExcelJS desde CDN
         const script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js';
         document.head.appendChild(script);
@@ -96,78 +522,125 @@ const ExportModule = {
     },
 
     /**
+     * Divide SQL en chunks seguros para Excel
+     */
+    splitSQLIntoChunks(sql, maxChars) {
+        if (!sql || sql.length <= maxChars) {
+            return [sql || ''];
+        }
+        
+        const chunks = [];
+        let currentPos = 0;
+        
+        while (currentPos < sql.length) {
+            let chunkEnd = currentPos + maxChars;
+            
+            if (chunkEnd < sql.length) {
+                const nearlineBreak = sql.lastIndexOf('\n', chunkEnd);
+                if (nearlineBreak > currentPos + maxChars * 0.8) {
+                    chunkEnd = nearlineBreak + 1;
+                }
+            }
+            
+            let chunk = sql.substring(currentPos, chunkEnd);
+            
+            if (chunk.trim().startsWith('=')) {
+                chunk = "'" + chunk;
+            }
+            
+            chunks.push(chunk);
+            currentPos = chunkEnd;
+        }
+        
+        return chunks;
+    },
+
+    /**
+     * Agrega saltos de línea cada N caracteres para mejor legibilidad
+     */
+    addLineBreaks(text, lineLength) {
+        if (!text) return '';
+        
+        const lines = text.split('\n');
+        const result = [];
+        
+        lines.forEach(line => {
+            if (line.length <= lineLength) {
+                result.push(line);
+            } else {
+                let pos = 0;
+                while (pos < line.length) {
+                    result.push(line.substring(pos, pos + lineLength));
+                    pos += lineLength;
+                }
+            }
+        });
+        
+        return result.join('\n');
+    },
+
+    /**
+     * Descarga buffer de Excel
+     */
+    downloadExcelBuffer(buffer, filename) {
+        const blob = new Blob([buffer], { 
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    },
+
+    // =============================================================================
+    // FUNCIONES DE GENERACIÓN AUTOMÁTICA CON EXCELJS (para cuando no hay template)
+    // =============================================================================
+
+    /**
      * Agrega título principal
      */
     addMainTitle(worksheet, currentRow) {
-        // Combinar celdas A1:K1
         worksheet.mergeCells(`A${currentRow}:K${currentRow}`);
         
         const titleCell = worksheet.getCell(`A${currentRow}`);
         titleCell.value = 'Generador de Queries de Ratificación v2';
         
-        // Aplicar estilo al título
         titleCell.style = {
-            font: { 
-                size: 18, 
-                bold: true, 
-                color: { argb: 'FFFFFFFF' } 
-            },
-            fill: {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FF6B46C1' } // Púrpura
-            },
-            alignment: { 
-                horizontal: 'center', 
-                vertical: 'middle' 
-            }
+            font: { size: 18, bold: true, color: { argb: 'FFFFFFFF' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B46C1' } },
+            alignment: { horizontal: 'center', vertical: 'middle' }
         };
         
-        // Altura de fila
         worksheet.getRow(currentRow).height = 40;
         
-        return currentRow + 2; // Saltar una fila
+        return currentRow + 2;
     },
 
     /**
      * Agrega sección UNIVERSOS
      */
     async addUniversosSection(worksheet, currentRow, queryUniversos, params) {
-        // H2 - Título de sección
         currentRow = this.addSectionTitle(worksheet, currentRow, 'UNIVERSOS');
-        
-        // Subtítulo "Código"
         currentRow = this.addSubtitle(worksheet, currentRow, 'Código');
-        
-        // Bloque de código SQL
         currentRow = this.addCodeBlock(worksheet, currentRow, queryUniversos);
-        
-        // Subtítulo "Resultado"
         currentRow = this.addSubtitle(worksheet, currentRow, 'Resultado');
-        
-        // Tabla de resultado (ejemplo)
         currentRow = this.addUniversosResultTable(worksheet, currentRow, params);
         
-        return currentRow + 2; // Espacio entre secciones
+        return currentRow + 2;
     },
 
     /**
      * Agrega sección AGRUPADOS
      */
     async addAgrupadosSection(worksheet, currentRow, queryAgrupados, params) {
-        // H2 - Título de sección
         currentRow = this.addSectionTitle(worksheet, currentRow, 'AGRUPADOS');
-        
-        // Subtítulo "Código"
         currentRow = this.addSubtitle(worksheet, currentRow, 'Código');
-        
-        // Bloque de código SQL
         currentRow = this.addCodeBlock(worksheet, currentRow, queryAgrupados);
-        
-        // Subtítulo "Resultado"
         currentRow = this.addSubtitle(worksheet, currentRow, 'Resultado');
-        
-        // Tabla de resultado (ejemplo)
         currentRow = this.addAgrupadosResultTable(worksheet, currentRow, params);
         
         return currentRow + 2;
@@ -177,21 +650,15 @@ const ExportModule = {
      * Agrega sección MINUS
      */
     async addMinusSection(worksheet, currentRow, queryMinus1, queryMinus2, params) {
-        // H2 - Título de sección
         currentRow = this.addSectionTitle(worksheet, currentRow, 'MINUS');
         
-        // MINUS 1
         currentRow = this.addSubtitle(worksheet, currentRow, 'Código MINUS 1 (EDV - DDV)');
         currentRow = this.addCodeBlock(worksheet, currentRow, queryMinus1);
         
-        // MINUS 2
         currentRow = this.addSubtitle(worksheet, currentRow, 'Código MINUS 2 (DDV - EDV)');
         currentRow = this.addCodeBlock(worksheet, currentRow, queryMinus2);
         
-        // Subtítulo "Resultado"
         currentRow = this.addSubtitle(worksheet, currentRow, 'Resultado');
-        
-        // Tabla de resultado (ejemplo)
         currentRow = this.addMinusResultTable(worksheet, currentRow, params);
         
         return currentRow + 2;
@@ -204,22 +671,10 @@ const ExportModule = {
         const titleCell = worksheet.getCell(`A${currentRow}`);
         titleCell.value = title;
         
-        // Aplicar estilo H2
         titleCell.style = {
-            font: { 
-                size: 14, 
-                bold: true, 
-                color: { argb: 'FFEBCB8B' } // Amarillo suave
-            },
-            fill: {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FF2E3440' } // Dark
-            },
-            alignment: { 
-                horizontal: 'left', 
-                vertical: 'middle' 
-            }
+            font: { size: 14, bold: true, color: { argb: 'FFEBCB8B' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E3440' } },
+            alignment: { horizontal: 'left', vertical: 'middle' }
         };
         
         worksheet.getRow(currentRow).height = 30;
@@ -235,15 +690,8 @@ const ExportModule = {
         subtitleCell.value = subtitle;
         
         subtitleCell.style = {
-            font: { 
-                size: 12, 
-                bold: true, 
-                color: { argb: 'FF2E3440' } 
-            },
-            alignment: { 
-                horizontal: 'left', 
-                vertical: 'middle' 
-            }
+            font: { size: 12, bold: true, color: { argb: 'FF2E3440' } },
+            alignment: { horizontal: 'left', vertical: 'middle' }
         };
         
         return currentRow + 1;
@@ -254,7 +702,6 @@ const ExportModule = {
      */
     addCodeBlock(worksheet, currentRow, sqlCode) {
         if (!sqlCode) {
-            // Código no disponible
             worksheet.mergeCells(`B${currentRow}:K${currentRow}`);
             const cell = worksheet.getCell(`B${currentRow}`);
             cell.value = '-- Query no disponible';
@@ -262,22 +709,17 @@ const ExportModule = {
             return currentRow + 1;
         }
 
-        // Dividir el SQL en trozos seguros (límite 32,760 caracteres)
         const chunks = this.splitSQLIntoChunks(sqlCode, 32760);
         
         chunks.forEach((chunk, index) => {
-            // Combinar celdas B:K para el chunk
             worksheet.mergeCells(`B${currentRow}:K${currentRow}`);
             const cell = worksheet.getCell(`B${currentRow}`);
             
-            // Agregar saltos de línea cada 120 caracteres para mejor legibilidad
             const formattedChunk = this.addLineBreaks(chunk, 120);
             cell.value = formattedChunk;
             
-            // Aplicar estilo de código
             this.applyCodeStyle(cell);
             
-            // Etiqueta para chunks adicionales
             if (index > 0) {
                 const labelCell = worksheet.getCell(`A${currentRow}`);
                 labelCell.value = 'Código (cont.)';
@@ -287,7 +729,6 @@ const ExportModule = {
                 };
             }
             
-            // Altura de fila aumentada para acomodar texto wrapped
             const lineCount = formattedChunk.split('\n').length;
             worksheet.getRow(currentRow).height = Math.max(60, lineCount * 15);
             
@@ -302,21 +743,9 @@ const ExportModule = {
      */
     applyCodeStyle(cell) {
         cell.style = {
-            font: { 
-                name: 'Consolas',
-                size: 10, 
-                color: { argb: 'FFECEFF4' } 
-            },
-            fill: {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FF3B4252' } 
-            },
-            alignment: { 
-                horizontal: 'left', 
-                vertical: 'top',
-                wrapText: true 
-            },
+            font: { name: 'Consolas', size: 10, color: { argb: 'FFECEFF4' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B4252' } },
+            alignment: { horizontal: 'left', vertical: 'top', wrapText: true },
             border: {
                 top: { style: 'thin', color: { argb: 'FF4C566A' } },
                 left: { style: 'thin', color: { argb: 'FF4C566A' } },
@@ -327,72 +756,18 @@ const ExportModule = {
     },
 
     /**
-     * Divide SQL en chunks seguros para Excel
-     */
-    splitSQLIntoChunks(sql, maxChars) {
-        if (sql.length <= maxChars) {
-            return [sql];
-        }
-        
-        const chunks = [];
-        let currentPos = 0;
-        
-        while (currentPos < sql.length) {
-            let chunkEnd = currentPos + maxChars;
-            
-            // Si no es el último chunk, buscar un salto de línea cercano
-            if (chunkEnd < sql.length) {
-                const nearlineBreak = sql.lastIndexOf('\n', chunkEnd);
-                if (nearlineBreak > currentPos + maxChars * 0.8) {
-                    chunkEnd = nearlineBreak + 1;
-                }
-            }
-            
-            chunks.push(sql.substring(currentPos, chunkEnd));
-            currentPos = chunkEnd;
-        }
-        
-        return chunks;
-    },
-
-    /**
-     * Agrega saltos de línea cada N caracteres
-     */
-    addLineBreaks(text, lineLength) {
-        const lines = text.split('\n');
-        const result = [];
-        
-        lines.forEach(line => {
-            if (line.length <= lineLength) {
-                result.push(line);
-            } else {
-                // Dividir líneas largas en múltiples líneas
-                let pos = 0;
-                while (pos < line.length) {
-                    result.push(line.substring(pos, pos + lineLength));
-                    pos += lineLength;
-                }
-            }
-        });
-        
-        return result.join('\n');
-    },
-
-    /**
      * Agrega tabla de resultado para UNIVERSOS
      */
     addUniversosResultTable(worksheet, currentRow, params) {
-        // Encabezados
         const headers = ['codmes', 'numreg_ddv', 'numreg_edv', 'diff_numreg', 'status'];
         headers.forEach((header, index) => {
-            const cell = worksheet.getCell(currentRow, index + 2); // Empezar en columna B
+            const cell = worksheet.getCell(currentRow, index + 2);
             cell.value = header;
             this.applyHeaderStyle(cell);
         });
         
         currentRow++;
         
-        // Datos de ejemplo
         const exampleData = [
             [202505, 2765145, 2765145, 0, '✅ IGUALES'],
             [202506, 2758763, 2758763, 0, '✅ IGUALES'],
@@ -403,7 +778,7 @@ const ExportModule = {
             row.forEach((value, index) => {
                 const cell = worksheet.getCell(currentRow, index + 2);
                 cell.value = value;
-                this.applyDataStyle(cell, index === 3); // Destacar columna diff
+                this.applyDataStyle(cell, index === 3);
             });
             currentRow++;
         });
@@ -415,7 +790,6 @@ const ExportModule = {
      * Agrega tabla de resultado para AGRUPADOS
      */
     addAgrupadosResultTable(worksheet, currentRow, params) {
-        // Encabezados
         const headers = ['capa', 'codmes', 'count_campos', 'sum_campos'];
         headers.forEach((header, index) => {
             const cell = worksheet.getCell(currentRow, index + 2);
@@ -425,7 +799,6 @@ const ExportModule = {
         
         currentRow++;
         
-        // Datos de ejemplo
         const exampleData = [
             ['EDV', 202505, 150, 1250000.50],
             ['DDV', 202505, 150, 1250000.50],
@@ -449,7 +822,6 @@ const ExportModule = {
      * Agrega tabla de resultado para MINUS
      */
     addMinusResultTable(worksheet, currentRow, params) {
-        // Encabezados
         const headers = ['query', 'registros_encontrados', 'status'];
         headers.forEach((header, index) => {
             const cell = worksheet.getCell(currentRow, index + 2);
@@ -459,7 +831,6 @@ const ExportModule = {
         
         currentRow++;
         
-        // Datos de ejemplo
         const exampleData = [
             ['MINUS 1 (EDV - DDV)', 0, '✅ Sin diferencias'],
             ['MINUS 2 (DDV - EDV)', 0, '✅ Sin diferencias']
@@ -482,20 +853,9 @@ const ExportModule = {
      */
     applyHeaderStyle(cell) {
         cell.style = {
-            font: { 
-                size: 11, 
-                bold: true, 
-                color: { argb: 'FF2E3440' } 
-            },
-            fill: {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FFD8DEE9' } // Gris claro
-            },
-            alignment: { 
-                horizontal: 'center', 
-                vertical: 'middle' 
-            },
+            font: { size: 11, bold: true, color: { argb: 'FF2E3440' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD8DEE9' } },
+            alignment: { horizontal: 'center', vertical: 'middle' },
             border: {
                 top: { style: 'thin', color: { argb: 'FF4C566A' } },
                 left: { style: 'thin', color: { argb: 'FF4C566A' } },
@@ -510,20 +870,9 @@ const ExportModule = {
      */
     applyDataStyle(cell, isDiff = false) {
         cell.style = {
-            font: { 
-                size: 10, 
-                color: { argb: 'FF2E3440' },
-                bold: isDiff
-            },
-            fill: {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: isDiff ? 'FFFFF8DB' : 'FFFFFFFF' } // Amarillo suave para diff
-            },
-            alignment: { 
-                horizontal: typeof cell.value === 'number' ? 'right' : 'left', 
-                vertical: 'middle' 
-            },
+            font: { size: 10, color: { argb: 'FF2E3440' }, bold: isDiff },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: isDiff ? 'FFFFF8DB' : 'FFFFFFFF' } },
+            alignment: { horizontal: typeof cell.value === 'number' ? 'right' : 'left', vertical: 'middle' },
             border: {
                 top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
                 left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
@@ -534,25 +883,12 @@ const ExportModule = {
         };
     },
 
+    // =============================================================================
+    // FUNCIONES DE COMPATIBILIDAD (mantener funcionalidad original)
+    // =============================================================================
+
     /**
-     * Descarga buffer de Excel
-     */
-    downloadExcelBuffer(buffer, filename) {
-        const blob = new Blob([buffer], { 
-            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-        });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-    },
-    
-    /**
-     * Exporta toda la información a Excel
+     * Exporta toda la información a Excel (FUNCIÓN ORIGINAL)
      */
     exportToExcel() {
         const validation = this.validateExportRequirements();
@@ -579,7 +915,6 @@ const ExportModule = {
 
     /**
      * Valida requisitos para exportación
-     * @returns {Object} - {isValid: boolean, errors: Array<string>}
      */
     validateExportRequirements() {
         const errors = [];
@@ -606,21 +941,17 @@ const ExportModule = {
     },
 
     /**
-     * Crea el workbook de Excel
-     * @param {string} format - Formato de export ('standard' o 'cuadre')
-     * @returns {Object} - Workbook de Excel
+     * Crea el workbook de Excel (FUNCIÓN ORIGINAL)
      */
     createWorkbook(format) {
         const wb = XLSX.utils.book_new();
         
         if (format === 'cuadre') {
-            // Formato específico para cuadre (como el template original)
             this.addParametersSheet(wb);
             this.addDescribeSheet(wb);
             this.addQueriesSheet(wb);
             this.addMetadataSheet(wb);
         } else {
-            // Formato estándar más completo
             this.addSummarySheet(wb);
             this.addParametersSheet(wb);
             this.addTableStructureSheet(wb);
@@ -633,8 +964,7 @@ const ExportModule = {
     },
 
     /**
-     * Agrega hoja de resumen
-     * @param {Object} wb - Workbook
+     * Agrega hoja de resumen (FUNCIÓN ORIGINAL)
      */
     addSummarySheet(wb) {
         const params = ParametersModule.getCurrentParameters();
@@ -665,34 +995,27 @@ const ExportModule = {
         ];
         
         const ws = XLSX.utils.aoa_to_sheet(summaryData);
-        
-        // Formatear la hoja
         this.formatSummarySheet(ws);
-        
         XLSX.utils.book_append_sheet(wb, ws, 'RESUMEN');
     },
 
     /**
      * Formatea la hoja de resumen
-     * @param {Object} ws - Worksheet
      */
     formatSummarySheet(ws) {
-        // Configurar anchos de columna
         ws['!cols'] = [
             { width: 25 },
             { width: 50 },
             { width: 15 }
         ];
         
-        // Configurar rangos
         ws['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } } // Título principal
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }
         ];
     },
 
     /**
      * Agrega hoja de parámetros
-     * @param {Object} wb - Workbook
      */
     addParametersSheet(wb) {
         const params = ParametersModule.getCurrentParameters();
@@ -709,30 +1032,24 @@ const ExportModule = {
             ['CAMPO ORIGINAL', 'CAMPO EDV', 'APLICADO']
         ];
         
-        // Agregar reglas de renombrado
         if (params.renameRules) {
             Object.entries(params.renameRules).forEach(([original, renamed]) => {
                 parametersData.push([original, renamed, '✅']);
             });
         }
         
-        // Agregar información de tablas finales
         parametersData.push(['', '', '']);
         parametersData.push(['TABLAS FINALES PARA QUERIES', '', '']);
         parametersData.push(['DDV', `${params.esquemaDDV}.${params.tablaDDV}`, 'Tabla fuente']);
         parametersData.push(['EDV', `${params.esquemaEDV}.${params.tablaEDV}`, 'Tabla destino']);
         
         const ws = XLSX.utils.aoa_to_sheet(parametersData);
-        
-        // Formatear
         ws['!cols'] = [{ width: 20 }, { width: 40 }, { width: 25 }];
-        
         XLSX.utils.book_append_sheet(wb, ws, 'PARAMETROS');
     },
 
     /**
      * Agrega hoja de estructura de tabla (describe)
-     * @param {Object} wb - Workbook
      */
     addDescribeSheet(wb) {
         const tableStructure = TableAnalysisModule.getTableStructure();
@@ -745,7 +1062,7 @@ const ExportModule = {
             describeData.push([
                 field.columnName,
                 field.dataType,
-                'null', // Por ahora sin comentarios
+                'null',
                 field.edvName,
                 field.aggregateFunction.toUpperCase(),
                 `${field.aggregateFunction}(${field.columnName})`,
@@ -754,24 +1071,15 @@ const ExportModule = {
         });
         
         const ws = XLSX.utils.aoa_to_sheet(describeData);
-        
-        // Formatear
         ws['!cols'] = [
-            { width: 20 }, // CAMPO_ORIGINAL
-            { width: 15 }, // TIPO_DATO
-            { width: 15 }, // COMENTARIO
-            { width: 20 }, // CAMPO_EDV
-            { width: 12 }, // FUNCION
-            { width: 25 }, // METRICA_DDV
-            { width: 25 }  // METRICA_EDV
+            { width: 20 }, { width: 15 }, { width: 15 }, { width: 20 },
+            { width: 12 }, { width: 25 }, { width: 25 }
         ];
-        
         XLSX.utils.book_append_sheet(wb, ws, 'TABLA_DESCRIBE');
     },
 
     /**
      * Agrega hoja de estructura detallada de tabla
-     * @param {Object} wb - Workbook
      */
     addTableStructureSheet(wb) {
         const tableStructure = TableAnalysisModule.getTableStructure();
@@ -792,7 +1100,6 @@ const ExportModule = {
             ]);
         });
         
-        // Agregar estadísticas
         const countFields = tableStructure.filter(f => f.aggregateFunction === 'count').length;
         const sumFields = tableStructure.filter(f => f.aggregateFunction === 'sum').length;
         
@@ -804,24 +1111,15 @@ const ExportModule = {
         structureData.push(['% Numéricos', `${Math.round((sumFields / tableStructure.length) * 100)}%`, '', '', '', '', '']);
         
         const ws = XLSX.utils.aoa_to_sheet(structureData);
-        
-        // Formatear
         ws['!cols'] = [
-            { width: 5 },  // #
-            { width: 20 }, // CAMPO_ORIGINAL
-            { width: 15 }, // TIPO_DATO
-            { width: 15 }, // FUNCION_AGREGACION
-            { width: 20 }, // CAMPO_EDV
-            { width: 12 }, // ES_NUMERICO
-            { width: 15 }  // PERMITE_NULOS
+            { width: 5 }, { width: 20 }, { width: 15 }, { width: 15 },
+            { width: 20 }, { width: 12 }, { width: 15 }
         ];
-        
         XLSX.utils.book_append_sheet(wb, ws, 'ESTRUCTURA_TABLA');
     },
 
     /**
      * Agrega hoja de queries (con manejo de límite de caracteres)
-     * @param {Object} wb - Workbook
      */
     addQueriesSheet(wb) {
         const queries = QueryModule.getGeneratedQueries();
@@ -859,22 +1157,14 @@ const ExportModule = {
         ];
         
         const ws = XLSX.utils.aoa_to_sheet(queryData);
-        
-        // Formatear
         ws['!cols'] = [
-            { width: 20 }, // TIPO_QUERY
-            { width: 40 }, // DESCRIPCION
-            { width: 80 }, // QUERY_SQL
-            { width: 10 }, // LINEAS
-            { width: 12 }  // CARACTERES
+            { width: 20 }, { width: 40 }, { width: 80 }, { width: 10 }, { width: 12 }
         ];
-        
         XLSX.utils.book_append_sheet(wb, ws, 'QUERIES_RATIFICACION');
     },
 
     /**
      * Agrega hoja de validación
-     * @param {Object} wb - Workbook
      */
     addValidationSheet(wb) {
         const params = ParametersModule.getCurrentParameters();
@@ -900,21 +1190,14 @@ const ExportModule = {
         ];
         
         const ws = XLSX.utils.aoa_to_sheet(validationData);
-        
-        // Formatear
         ws['!cols'] = [
-            { width: 25 }, // ASPECTO
-            { width: 10 }, // ESTADO
-            { width: 40 }, // DETALLES
-            { width: 30 }  // RECOMENDACIÓN
+            { width: 25 }, { width: 10 }, { width: 40 }, { width: 30 }
         ];
-        
         XLSX.utils.book_append_sheet(wb, ws, 'VALIDACION');
     },
 
     /**
      * Agrega hoja de metadatos
-     * @param {Object} wb - Workbook
      */
     addMetadataSheet(wb) {
         const tableStructure = TableAnalysisModule.getTableStructure();
@@ -939,20 +1222,14 @@ const ExportModule = {
         ];
         
         const ws = XLSX.utils.aoa_to_sheet(metadataData);
-        
-        // Formatear
         ws['!cols'] = [
-            { width: 25 }, // METADATO
-            { width: 40 }, // VALOR
-            { width: 35 }  // DESCRIPCIÓN
+            { width: 25 }, { width: 40 }, { width: 35 }
         ];
-        
         XLSX.utils.book_append_sheet(wb, ws, 'METADATOS');
     },
 
     /**
      * Genera nombre de archivo para export
-     * @returns {string} - Nombre del archivo
      */
     generateFilename() {
         const params = ParametersModule.getCurrentParameters();
@@ -967,7 +1244,6 @@ const ExportModule = {
 
     /**
      * Muestra vista previa del export
-     * @param {Object} workbook - Workbook exportado
      */
     showExportPreview(workbook) {
         const preview = document.getElementById('exportPreview');
@@ -1013,7 +1289,6 @@ const ExportModule = {
 
     /**
      * Exporta queries individuales
-     * @param {string} format - Formato de export ('sql', 'txt', 'json')
      */
     exportQueries(format = 'sql') {
         const queries = QueryModule.getGeneratedQueries();
@@ -1055,8 +1330,6 @@ const ExportModule = {
 
     /**
      * Genera archivo SQL con todos los queries
-     * @param {Object} queries - Queries generados
-     * @returns {string} - Contenido del archivo SQL
      */
     generateSQLFile(queries) {
         const params = ParametersModule.getCurrentParameters();
@@ -1083,8 +1356,6 @@ const ExportModule = {
 
     /**
      * Genera archivo de texto con información completa
-     * @param {Object} queries - Queries generados
-     * @returns {string} - Contenido del archivo de texto
      */
     generateTextFile(queries) {
         const params = ParametersModule.getCurrentParameters();
@@ -1119,8 +1390,6 @@ const ExportModule = {
 
     /**
      * Obtiene título descriptivo para un query
-     * @param {string} queryKey - Clave del query
-     * @returns {string} - Título descriptivo
      */
     getQueryTitle(queryKey) {
         const titles = {
@@ -1150,7 +1419,6 @@ const ExportModule = {
         let content = `REPORTE COMPLETO DE CUADRE DDV vs EDV\n`;
         content += `${'='.repeat(60)}\n\n`;
         
-        // Información del proyecto
         content += `INFORMACIÓN DEL PROYECTO:\n`;
         content += `${'-'.repeat(30)}\n`;
         content += `Fecha de generación: ${new Date().toLocaleString('es-ES')}\n`;
@@ -1164,7 +1432,6 @@ const ExportModule = {
         content += `- Períodos: ${params.periodos}\n`;
         content += `\n`;
         
-        // Información de la estructura
         content += `ESTRUCTURA DE TABLA:\n`;
         content += `${'-'.repeat(25)}\n`;
         content += `- Total campos: ${tableStructure.length}\n`;
@@ -1175,7 +1442,6 @@ const ExportModule = {
         }
         content += `\n`;
         
-        // Resumen de queries
         content += `QUERIES GENERADOS:\n`;
         content += `${'-'.repeat(20)}\n`;
         Object.entries(queries).forEach(([key, query]) => {
@@ -1186,7 +1452,6 @@ const ExportModule = {
         });
         content += `\n`;
         
-        // Instrucciones de uso
         content += `INSTRUCCIONES DE USO:\n`;
         content += `${'-'.repeat(25)}\n`;
         content += `1. Copiar el query deseado completo\n`;
@@ -1196,7 +1461,6 @@ const ExportModule = {
         content += `5. Documentar hallazgos para seguimiento y corrección\n`;
         content += `\n`;
         
-        // Queries completos
         const queryDescriptions = {
             universos: 'Compara el número total de registros entre DDV y EDV',
             agrupados: 'Compara métricas agregadas por cada campo',
@@ -1224,13 +1488,11 @@ const ExportModule = {
             content += `\n${'-'.repeat(40)}\n`;
         });
         
-        // Footer
         content += `\n\n${'='.repeat(80)}\n`;
         content += `FIN DEL REPORTE - Generado por: Generador de Queries de Ratificación v2\n`;
         content += `Fecha: ${new Date().toISOString()}\n`;
         content += `${'='.repeat(80)}`;
         
-        // Descargar archivo
         const filename = `reporte_completo_queries_${new Date().toISOString().split('T')[0]}.txt`;
         this.downloadFile(content, filename, 'text/plain');
         
@@ -1245,9 +1507,6 @@ const ExportModule = {
 
     /**
      * Descarga archivo con contenido específico
-     * @param {string} content - Contenido del archivo
-     * @param {string} filename - Nombre del archivo
-     * @param {string} mimeType - Tipo MIME del archivo
      */
     downloadFile(content, filename, mimeType) {
         const blob = new Blob([content], { type: mimeType });
@@ -1262,9 +1521,9 @@ const ExportModule = {
     },
 
     /**
-     * Exporta Excel específico para V3 - Formato Cuadre EDV (DISEÑO MEJORADO)
+     * Exporta queries en formato Excel (función faltante)
      */
-    exportCuadreEDV() {
+    exportQueriesExcel() {
         const queries = QueryModule.getGeneratedQueries();
         const params = ParametersModule.getCurrentParameters();
         
@@ -1273,376 +1532,68 @@ const ExportModule = {
             return;
         }
         
-        // Generar nombre de archivo
-        const tableName = params.tablaDDV || 'TABLA';
-        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
-        const filename = `cuadre_${tableName.toUpperCase()}_${periods}.xlsx`;
-        
         const wb = XLSX.utils.book_new();
         
-        // Crear las 3 pestañas con diseño mejorado
-        this.createUniversoSheetDesign(wb, queries.universos, params);
-        this.createAgrupadoSheetDesign(wb, queries.agrupados, params);
-        this.createMinusSheetDesign(wb, queries.minus1, queries.minus2, params);
+        Object.entries(queries).forEach(([key, query]) => {
+            this.createQuerySheet(wb, key, query);
+        });
         
-        // Descargar
+        const tableName = params.tablaDDV || 'TABLA';
+        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
+        const filename = `queries_${tableName}_${periods}.xlsx`;
+        
         XLSX.writeFile(wb, filename);
         
         if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
-            UIModule.showNotification(`Excel de cuadre generado: ${filename}`, 'success', 5000);
+            UIModule.showNotification(`Excel de queries generado: ${filename}`, 'success', 4000);
         }
     },
 
     /**
-     * Crea hoja Universo con DISEÑO PROFESIONAL
-     * @param {Object} wb - Workbook
-     * @param {string} queryUniverso - Query de universos
-     * @param {Object} params - Parámetros
+     * Crea hoja individual para un query (evitando límite de 32767 caracteres)
      */
-    createUniversoSheetDesign(wb, queryUniverso, params) {
+    createQuerySheet(wb, key, query) {
+        const title = this.getQueryTitle(key);
+        const parts = this.splitTextForExcel(query);
+        
         const data = [
-            // ENCABEZADO PRINCIPAL
-            ['CUADRE DDV vs EDV - ANÁLISIS DE UNIVERSOS', '', '', '', ''],
-            ['', '', '', '', ''],
-            
-            // INFORMACIÓN DEL PROYECTO
-            ['INFORMACIÓN DEL PROYECTO', '', '', '', ''],
-            ['Tabla DDV:', `${params.esquemaDDV}.${params.tablaDDV}`, '', '', ''],
-            ['Tabla EDV:', `${params.esquemaEDV}.${params.tablaEDV}`, '', '', ''],
-            ['Períodos:', params.periodos, '', '', ''],
-            ['Fecha:', new Date().toLocaleDateString('es-ES'), '', '', ''],
-            ['', '', '', '', ''],
-            
-            // DESCRIPCIÓN
-            ['DESCRIPCIÓN', '', '', '', ''],
-            ['Este query compara el número total de registros entre las tablas DDV y EDV', '', '', '', ''],
-            ['para verificar que ambas tengan la misma cantidad de datos por período.', '', '', '', ''],
-            ['', '', '', '', ''],
-            
-            // QUERY SQL CON FORMATO
-            ['QUERY SQL', '', '', '', ''],
-            ['Código:', '', '', '', ''],
-            ...this.formatQueryForDisplay(queryUniverso),
-            ['', '', '', '', ''],
-            
-            // INTERPRETACIÓN DE RESULTADOS
-            ['INTERPRETACIÓN DE RESULTADOS', '', '', '', ''],
-            ['• diff_numreg = 0: Las tablas tienen la misma cantidad de registros ✓', '', '', '', ''],
-            ['• diff_numreg > 0: Faltan registros en EDV (Revisar proceso) ⚠️', '', '', '', ''],
-            ['• diff_numreg < 0: Sobran registros en EDV (Revisar duplicados) ⚠️', '', '', '', ''],
-            ['', '', '', '', ''],
-            
-            // ACCIONES RECOMENDADAS
-            ['ACCIONES SEGÚN RESULTADO', '', '', '', ''],
-            ['1. Si diff_numreg = 0: Continuar con siguiente validación', '', '', '', ''],
-            ['2. Si diff_numreg ≠ 0: Investigar causa de la diferencia', '', '', '', ''],
-            ['3. Validar filtros de período aplicados', '', '', '', ''],
-            ['4. Revisar proceso de carga de datos', '', '', '', '']
+            [title],
+            [''],
+            ['PARTE', 'CONTENIDO SQL'],
+            ...parts.map((part, index) => [
+                parts.length > 1 ? `Parte ${index + 1}` : 'Query Completo',
+                part
+            ])
         ];
         
         const ws = XLSX.utils.aoa_to_sheet(data);
-        
-        // APLICAR DISEÑO PROFESIONAL
-        this.applyUniversoStyling(ws);
-        
-        XLSX.utils.book_append_sheet(wb, ws, 'Universo');
-    },
-
-    /**
-     * Crea hoja Agrupado con DISEÑO PROFESIONAL
-     * @param {Object} wb - Workbook
-     * @param {string} queryAgrupado - Query agrupado
-     * @param {Object} params - Parámetros
-     */
-    createAgrupadoSheetDesign(wb, queryAgrupado, params) {
-        const data = [
-            // ENCABEZADO PRINCIPAL
-            ['CUADRE DDV vs EDV - ANÁLISIS AGRUPADO POR CAMPOS', '', '', '', '', ''],
-            ['', '', '', '', '', ''],
-            
-            // INFORMACIÓN DEL PROYECTO
-            ['INFORMACIÓN DEL PROYECTO', '', '', '', '', ''],
-            ['Tabla DDV:', `${params.esquemaDDV}.${params.tablaDDV}`, '', '', '', ''],
-            ['Tabla EDV:', `${params.esquemaEDV}.${params.tablaEDV}`, '', '', '', ''],
-            ['Períodos:', params.periodos, '', '', '', ''],
-            ['Fecha:', new Date().toLocaleDateString('es-ES'), '', '', '', ''],
-            ['', '', '', '', '', ''],
-            
-            // DESCRIPCIÓN
-            ['DESCRIPCIÓN', '', '', '', '', ''],
-            ['Este query compara las métricas agregadas (COUNT/SUM) campo por campo', '', '', '', '', ''],
-            ['entre las tablas DDV y EDV para identificar diferencias específicas.', '', '', '', '', ''],
-            ['', '', '', '', '', ''],
-            
-            // ESTRUCTURA DEL RESULTADO
-            ['ESTRUCTURA DEL RESULTADO', '', '', '', '', ''],
-            ['Columna', 'Descripción', 'Valores Esperados', '', '', ''],
-            ['capa', 'Identifica la fuente (DDV/EDV)', 'DDV, EDV', '', '', ''],
-            ['codmes', 'Período analizado', params.periodos, '', '', ''],
-            ['campos_count', 'Conteos por campo', 'Números enteros', '', '', ''],
-            ['campos_sum', 'Sumas por campo', 'Números decimales', '', '', ''],
-            ['', '', '', '', '', ''],
-            
-            // QUERY SQL
-            ['QUERY SQL', '', '', '', '', ''],
-            ['Código:', '', '', '', '', ''],
-            ...this.formatQueryForDisplay(queryAgrupado),
-            ['', '', '', '', '', ''],
-            
-            // ANÁLISIS RECOMENDADO
-            ['ANÁLISIS RECOMENDADO', '', '', '', '', ''],
-            ['1. Ordenar por codmes y capa para comparación lado a lado', '', '', '', '', ''],
-            ['2. Verificar que cada campo tenga valores idénticos entre DDV y EDV', '', '', '', '', ''],
-            ['3. Identificar campos con diferencias para investigación detallada', '', '', '', '', ''],
-            ['4. Documentar cualquier discrepancia encontrada', '', '', '', '', '']
-        ];
-        
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        
-        // APLICAR DISEÑO PROFESIONAL
-        this.applyAgrupadoStyling(ws);
-        
-        XLSX.utils.book_append_sheet(wb, ws, 'Agrupado');
-    },
-
-    /**
-     * Crea hoja Minus con DISEÑO PROFESIONAL
-     * @param {Object} wb - Workbook
-     * @param {string} queryMinus1 - Query MINUS 1
-     * @param {string} queryMinus2 - Query MINUS 2
-     * @param {Object} params - Parámetros
-     */
-    createMinusSheetDesign(wb, queryMinus1, queryMinus2, params) {
-        const data = [
-            // ENCABEZADO PRINCIPAL
-            ['CUADRE DDV vs EDV - ANÁLISIS DE DIFERENCIAS (MINUS)', '', '', '', '', ''],
-            ['', '', '', '', '', ''],
-            
-            // INFORMACIÓN DEL PROYECTO
-            ['INFORMACIÓN DEL PROYECTO', '', '', '', '', ''],
-            ['Tabla DDV:', `${params.esquemaDDV}.${params.tablaDDV}`, '', '', '', ''],
-            ['Tabla EDV:', `${params.esquemaEDV}.${params.tablaEDV}`, '', '', '', ''],
-            ['Períodos:', params.periodos, '', '', '', ''],
-            ['Fecha:', new Date().toLocaleDateString('es-ES'), '', '', '', ''],
-            ['', '', '', '', '', ''],
-            
-            // DESCRIPCIÓN
-            ['DESCRIPCIÓN', '', '', '', '', ''],
-            ['Los queries MINUS identifican registros que están en una tabla pero no en la otra.', '', '', '', '', ''],
-            ['Ayudan a detectar datos faltantes o excedentes entre DDV y EDV.', '', '', '', '', ''],
-            ['', '', '', '', '', ''],
-            
-            // QUERY MINUS 1
-            ['QUERY MINUS 1: EDV - DDV', '', '', '', '', ''],
-            ['Encuentra registros que están en EDV pero NO en DDV', '', '', '', '', ''],
-            ['', '', '', '', '', ''],
-            ['Código:', '', '', '', '', ''],
-            ...this.formatQueryForDisplay(queryMinus1, 'MINUS1'),
-            ['', '', '', '', '', ''],
-            
-            // QUERY MINUS 2
-            ['QUERY MINUS 2: DDV - EDV', '', '', '', '', ''],
-            ['Encuentra registros que están en DDV pero NO en EDV', '', '', '', '', ''],
-            ['', '', '', '', '', ''],
-            ['Código:', '', '', '', '', ''],
-            ...this.formatQueryForDisplay(queryMinus2, 'MINUS2'),
-            ['', '', '', '', '', ''],
-            
-            // INTERPRETACIÓN
-            ['INTERPRETACIÓN DE RESULTADOS', '', '', '', '', ''],
-            ['• Si ambos queries devuelven 0 registros: Las tablas son idénticas ✓', '', '', '', '', ''],
-            ['• Si MINUS 1 devuelve registros: Hay datos en EDV que faltan en DDV ⚠️', '', '', '', '', ''],
-            ['• Si MINUS 2 devuelve registros: Hay datos en DDV que faltan en EDV ⚠️', '', '', '', '', ''],
-            ['', '', '', '', '', ''],
-            
-            // ACCIONES CORRECTIVAS
-            ['ACCIONES CORRECTIVAS', '', '', '', '', ''],
-            ['1. Ejecutar ambos queries por separado', '', '', '', '', ''],
-            ['2. Analizar los registros devueltos en detalle', '', '', '', '', ''],
-            ['3. Verificar procesos de ETL y transformación de datos', '', '', '', '', ''],
-            ['4. Coordinar con el equipo técnico para resolver diferencias', '', '', '', '', '']
-        ];
-        
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        
-        // APLICAR DISEÑO PROFESIONAL
-        this.applyMinusStyling(ws);
-        
-        XLSX.utils.book_append_sheet(wb, ws, 'Minus');
-    },
-
-    /**
-     * Formatea query para mejor visualización en Excel
-     * @param {string} query - Query SQL
-     * @param {string} prefix - Prefijo para identificar secciones
-     * @returns {Array} - Líneas formateadas para Excel
-     */
-    formatQueryForDisplay(query, prefix = '') {
-        if (!query) return [['-- Query no disponible', '', '', '', '']];
-        
-        const lines = query.split('\n');
-        const formattedLines = [];
-        
-        lines.forEach((line, index) => {
-            // Limitar longitud de línea para Excel
-            const cleanLine = line.trim();
-            if (cleanLine.length > 0) {
-                // Dividir líneas muy largas
-                if (cleanLine.length > 120) {
-                    const chunks = cleanLine.match(/.{1,120}/g) || [cleanLine];
-                    chunks.forEach((chunk, chunkIndex) => {
-                        formattedLines.push([
-                            chunkIndex === 0 ? cleanLine.substring(0, 20) + '...' : '...',
-                            chunk,
-                            '', '', ''
-                        ]);
-                    });
-                } else {
-                    formattedLines.push([cleanLine, '', '', '', '']);
-                }
-            }
-        });
-        
-        return formattedLines;
-    },
-
-    /**
-     * Aplica estilos profesionales a la hoja Universo
-     * @param {Object} ws - Worksheet
-     */
-    applyUniversoStyling(ws) {
-        // Configurar anchos de columna
         ws['!cols'] = [
-            { width: 25 }, // Columna A - Títulos
-            { width: 40 }, // Columna B - Contenido
-            { width: 20 }, // Columna C - Extra
-            { width: 15 }, // Columna D - Extra
-            { width: 15 }  // Columna E - Extra
+            { width: 15 },
+            { width: 120 }
         ];
         
-        // Configurar combinación de celdas para títulos
-        ws['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }, // Título principal
-            { s: { r: 2, c: 0 }, e: { r: 2, c: 4 } }, // Información del proyecto
-            { s: { r: 8, c: 0 }, e: { r: 8, c: 4 } }, // Descripción
-            { s: { r: 14, c: 0 }, e: { r: 14, c: 4 } }, // Query SQL
-            { s: { r: 20, c: 0 }, e: { r: 20, c: 4 } }, // Interpretación
-            { s: { r: 26, c: 0 }, e: { r: 26, c: 4 } }  // Acciones
-        ];
+        const sheetName = key.toUpperCase().substring(0, 31);
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
     },
 
     /**
-     * Aplica estilos profesionales a la hoja Agrupado
-     * @param {Object} ws - Worksheet
+     * Divide texto largo para evitar el límite de 32767 caracteres de Excel
      */
-    applyAgrupadoStyling(ws) {
-        // Configurar anchos de columna
-        ws['!cols'] = [
-            { width: 25 }, // Columna A - Títulos
-            { width: 40 }, // Columna B - Contenido
-            { width: 25 }, // Columna C - Valores
-            { width: 15 }, // Columna D - Extra
-            { width: 15 }, // Columna E - Extra
-            { width: 15 }  // Columna F - Extra
-        ];
+    splitTextForExcel(text) {
+        if (!text) return [''];
         
-        // Configurar combinación de celdas para títulos
-        ws['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Título principal
-            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }, // Información del proyecto
-            { s: { r: 8, c: 0 }, e: { r: 8, c: 5 } }, // Descripción
-            { s: { r: 12, c: 0 }, e: { r: 12, c: 5 } }, // Estructura
-            { s: { r: 20, c: 0 }, e: { r: 20, c: 5 } }, // Query SQL
-            { s: { r: 25, c: 0 }, e: { r: 25, c: 5 } }  // Análisis
-        ];
-    },
-
-    /**
-     * Aplica estilos profesionales a la hoja Minus
-     * @param {Object} ws - Worksheet
-     */
-    applyMinusStyling(ws) {
-        // Configurar anchos de columna
-        ws['!cols'] = [
-            { width: 30 }, // Columna A - Títulos
-            { width: 50 }, // Columna B - Contenido
-            { width: 20 }, // Columna C - Extra
-            { width: 15 }, // Columna D - Extra
-            { width: 15 }, // Columna E - Extra
-            { width: 15 }  // Columna F - Extra
-        ];
+        const MAX_EXCEL_CHARS = 32000;
         
-        // Configurar combinación de celdas para títulos
-        ws['!merges'] = [
-            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Título principal
-            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }, // Información del proyecto
-            { s: { r: 8, c: 0 }, e: { r: 8, c: 5 } }, // Descripción
-            { s: { r: 12, c: 0 }, e: { r: 12, c: 5 } }, // MINUS 1
-            { s: { r: 20, c: 0 }, e: { r: 20, c: 5 } }, // MINUS 2
-            { s: { r: 28, c: 0 }, e: { r: 28, c: 5 } }, // Interpretación
-            { s: { r: 34, c: 0 }, e: { r: 34, c: 5 } }  // Acciones
-        ];
-    },
-
-    /**
-     * Divide query complejo inteligentemente
-     * @param {string} query - Query a dividir
-     * @returns {Array<string>} - Partes del query
-     */
-    splitComplexQuery(query) {
-        if (!query || query.length <= 30000) {
-            return [query];
+        if (text.length <= MAX_EXCEL_CHARS) {
+            return [text];
         }
         
         const parts = [];
-        const lines = query.split('\n');
-        let currentPart = '';
-        let fieldCount = 0;
-        
-        for (const line of lines) {
-            // Si es una línea con campos count() o sum()
-            if (line.includes('count(') || line.includes('sum(')) {
-                fieldCount++;
-                
-                // Cada 10 campos, hacer nueva parte
-                if (fieldCount % 10 === 0) {
-                    parts.push(currentPart + line);
-                    currentPart = '';
-                    continue;
-                }
-            }
-            
-            // Si agregar esta línea excede 30k, partir
-            if ((currentPart + '\n' + line).length > 30000 && currentPart.length > 0) {
-                parts.push(currentPart);
-                currentPart = line;
-            } else {
-                currentPart += (currentPart ? '\n' : '') + line;
-            }
-        }
-        
-        if (currentPart) {
-            parts.push(currentPart);
-        }
-        
-        return parts;
-    },
-
-    /**
-     * Divide query en partes lógicas
-     * @param {string} query - Query a dividir
-     * @param {string} keyword - Palabra clave de referencia
-     * @returns {Array<string>} - Partes del query
-     */
-    splitQueryIntoLogicalParts(query, keyword) {
-        if (!query) return [''];
-        
-        const lines = query.split('\n');
-        const parts = [];
+        const lines = text.split('\n');
         let currentPart = '';
         
         for (const line of lines) {
-            if ((currentPart + '\n' + line).length > 30000 && currentPart.length > 0) {
+            if ((currentPart + '\n' + line).length > MAX_EXCEL_CHARS && currentPart.length > 0) {
                 parts.push(currentPart.trim());
                 currentPart = line;
             } else {
@@ -1654,6 +1605,19 @@ const ExportModule = {
             parts.push(currentPart.trim());
         }
         
-        return parts.length > 0 ? parts : [query];
+        return parts.length > 0 ? parts : [text.substring(0, MAX_EXCEL_CHARS)];
+    },
+
+    /**
+     * Trunca texto para Excel si es necesario
+     */
+    truncateForExcel(text) {
+        const MAX_EXCEL_CHARS = 32000;
+        
+        if (!text || text.length <= MAX_EXCEL_CHARS) {
+            return text || '';
+        }
+        
+        return text.substring(0, MAX_EXCEL_CHARS) + '\n\n[... CONTENIDO TRUNCADO ...]';
     }
 };
