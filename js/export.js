@@ -107,9 +107,13 @@ const ExportModule = {
 
             // Insertar contenido en la pestaña
             try {
-                await this.insertContentIntoTemplate(worksheet, sheetData);
-                processedSheets.push(worksheet.name);
-                console.log(`✅ Procesada pestaña: ${worksheet.name} (${sheetData.tipo})`);
+                const insertResult = await this.insertContentIntoTemplate(worksheet, sheetData);
+                if (insertResult && insertResult.inserted > 0) {
+                    processedSheets.push(worksheet.name);
+                    console.log(`✅ Procesada pestaña: ${worksheet.name} (${sheetData.tipo}) - ${insertResult.inserted} elementos insertados`);
+                } else {
+                    console.log(`ℹ️ Pestaña ${worksheet.name}: No se encontraron placeholders para insertar`);
+                }
             } catch (error) {
                 console.warn(`⚠️ Error procesando pestaña ${worksheet.name}:`, error.message);
             }
@@ -208,6 +212,7 @@ const ExportModule = {
                         
                         // Mostrar información del template
                         if (templateInfo) {
+                            const sheetAnalysis = this.analyzeSheets(validationResult.sheets);
                             templateInfo.innerHTML = `
                                 <div class="template-loaded">
                                     <div class="template-header">
@@ -223,12 +228,20 @@ const ExportModule = {
                                             <span class="value">${validationResult.sheets.join(', ')}</span>
                                         </div>
                                         <div class="info-item">
+                                            <span class="label">Pestañas compatibles:</span>
+                                            <span class="value">${sheetAnalysis.compatibleSheets.join(', ') || 'Ninguna detectada'}</span>
+                                        </div>
+                                        <div class="info-item">
                                             <span class="label">Anclas detectadas:</span>
                                             <span class="value">${validationResult.anchors} nombres definidos</span>
                                         </div>
                                         <div class="info-item">
                                             <span class="label">Placeholders:</span>
                                             <span class="value">${validationResult.placeholders} encontrados</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="label">Estado:</span>
+                                            <span class="value">${validationResult.isValid ? '✅ Válido' : '⚠️ Revisar'}</span>
                                         </div>
                                     </div>
                                     <div class="template-actions">
@@ -306,10 +319,14 @@ const ExportModule = {
         ];
 
         // Verificar nombres definidos
-        if (workbook.definedNames) {
+        if (workbook.definedNames && typeof workbook.definedNames.get === 'function') {
             requiredAnchors.forEach(anchor => {
-                if (workbook.definedNames.get(anchor)) {
-                    validationResult.anchors++;
+                try {
+                    if (workbook.definedNames.get(anchor)) {
+                        validationResult.anchors++;
+                    }
+                } catch (error) {
+                    console.warn(`Error accediendo a nombre definido ${anchor}:`, error.message);
                 }
             });
         }
@@ -322,7 +339,15 @@ const ExportModule = {
             // Placeholders alternativos
             '{{UNIVERSOS_SQL}}', '{{UNIVERSOS_TABLA}}',
             '{{AGRUPADOS_SQL}}', '{{AGRUPADOS_TABLA}}',
-            '{{MINUS_SQL}}', '{{MINUS_TABLA}}'
+            '{{MINUS_SQL}}', '{{MINUS_TABLA}}',
+            // Placeholders para pestañas específicas
+            '<<UNIV_SQL>>', '<<UNIV_TABLA>>',
+            '<<AGR_SQL>>', '<<AGR_TABLA>>',
+            '<<MINUS_SQL>>', '<<MINUS_TABLA>>',
+            // Variaciones adicionales
+            '[UNIVERSOS_SQL]', '[UNIVERSOS_TABLA]',
+            '[AGRUPADOS_SQL]', '[AGRUPADOS_TABLA]',
+            '[MINUS_SQL]', '[MINUS_TABLA]'
         ];
 
         worksheet.eachRow((row, rowNumber) => {
@@ -350,22 +375,55 @@ const ExportModule = {
     },
 
     /**
+     * Analiza las pestañas del template para detectar compatibilidad
+     */
+    analyzeSheets(sheetNames) {
+        const compatibleSheets = [];
+        const sheetTypes = {
+            'universo': ['universo', 'universos', 'univ'],
+            'agrupados': ['agrupado', 'agrupados', 'agr', 'agrupado'],
+            'minus': ['minus', 'diferencia', 'diff'],
+            'cuadre': ['cuadre', 'resumen', 'summary', 'main']
+        };
+
+        sheetNames.forEach(sheetName => {
+            const lowerName = sheetName.toLowerCase();
+            
+            for (const [type, keywords] of Object.entries(sheetTypes)) {
+                if (keywords.some(keyword => lowerName.includes(keyword))) {
+                    compatibleSheets.push(`${sheetName} (${type})`);
+                    break;
+                }
+            }
+        });
+
+        return {
+            compatibleSheets,
+            totalSheets: sheetNames.length,
+            compatibleCount: compatibleSheets.length
+        };
+    },
+
+    /**
      * Inserta contenido en el template usando nombres definidos o fallback
      */
     async insertContentIntoTemplate(worksheet, data) {
         const workbook = worksheet.workbook;
+        let totalInserted = 0;
 
         // Determinar el tipo de inserción basado en los datos disponibles
         if (data.tipo === 'universos') {
-            await this.insertSingleTypeContent(worksheet, workbook, data, 'UNIV');
+            totalInserted = await this.insertSingleTypeContent(worksheet, workbook, data, 'UNIV');
         } else if (data.tipo === 'agrupados') {
-            await this.insertSingleTypeContent(worksheet, workbook, data, 'AGR');
+            totalInserted = await this.insertSingleTypeContent(worksheet, workbook, data, 'AGR');
         } else if (data.tipo === 'minus') {
-            await this.insertSingleTypeContent(worksheet, workbook, data, 'MINUS');
+            totalInserted = await this.insertSingleTypeContent(worksheet, workbook, data, 'MINUS');
         } else {
             // Inserción completa con todos los tipos
-            await this.insertCompleteContent(worksheet, workbook, data);
+            totalInserted = await this.insertCompleteContent(worksheet, workbook, data);
         }
+
+        return { inserted: totalInserted };
     },
 
     /**
@@ -389,20 +447,26 @@ const ExportModule = {
             }
         ];
 
+        let insertedCount = 0;
+
         for (const item of contentMap) {
             try {
                 const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder, item.altPlaceholder);
                 if (position) {
                     if (item.type === 'sql') {
                         await this.insertSQLContent(worksheet, position, item.content);
+                        insertedCount++;
                     } else if (item.type === 'table') {
                         await this.insertTableContent(worksheet, position, item.content);
+                        insertedCount++;
                     }
                 }
             } catch (error) {
                 console.warn(`No se pudo insertar ${item.anchor}:`, error.message);
             }
         }
+
+        return insertedCount;
     },
 
     /**
@@ -418,20 +482,26 @@ const ExportModule = {
             { anchor: 'ANCHOR_MINUS_TABLA', placeholder: '<<MINUS_TABLA>>', altPlaceholder: '{{MINUS_TABLA}}', content: data.tablaMinus, type: 'table' }
         ];
 
+        let insertedCount = 0;
+
         for (const item of contentMap) {
             try {
                 const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder, item.altPlaceholder);
                 if (position) {
                     if (item.type === 'sql') {
                         await this.insertSQLContent(worksheet, position, item.content);
+                        insertedCount++;
                     } else if (item.type === 'table') {
                         await this.insertTableContent(worksheet, position, item.content);
+                        insertedCount++;
                     }
                 }
             } catch (error) {
                 console.warn(`No se pudo insertar ${item.anchor}:`, error.message);
             }
         }
+
+        return insertedCount;
     },
 
     /**
@@ -439,15 +509,19 @@ const ExportModule = {
      */
     findContentPosition(workbook, worksheet, anchorName, placeholder, altPlaceholder = null) {
         // Intentar nombre definido primero
-        if (workbook.definedNames) {
-            const definedName = workbook.definedNames.get(anchorName);
-            if (definedName) {
-                const match = definedName.value.match(/([^!]+)!\$([A-Z]+)\$(\d+)/);
-                if (match) {
-                    const col = this.columnLetterToNumber(match[2]);
-                    const row = parseInt(match[3]);
-                    return { row, col };
+        if (workbook.definedNames && typeof workbook.definedNames.get === 'function') {
+            try {
+                const definedName = workbook.definedNames.get(anchorName);
+                if (definedName) {
+                    const match = definedName.value.match(/([^!]+)!\$([A-Z]+)\$(\d+)/);
+                    if (match) {
+                        const col = this.columnLetterToNumber(match[2]);
+                        const row = parseInt(match[3]);
+                        return { row, col };
+                    }
                 }
+            } catch (error) {
+                console.warn(`Error accediendo a nombre definido ${anchorName}:`, error.message);
             }
         }
 
@@ -457,6 +531,18 @@ const ExportModule = {
         if (altPlaceholder) {
             placeholders.push(altPlaceholder);
         }
+
+        // Agregar variaciones adicionales del placeholder
+        const basePlaceholder = placeholder.replace(/[<>{}[\]]/g, '');
+        const variations = [
+            `<<${basePlaceholder}>>`,
+            `{{${basePlaceholder}}}`,
+            `[${basePlaceholder}]`,
+            `(${basePlaceholder})`,
+            `%${basePlaceholder}%`
+        ];
+        
+        placeholders.push(...variations);
 
         worksheet.eachRow((row, rowNumber) => {
             row.eachCell((cell, colNumber) => {
