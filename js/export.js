@@ -1,7 +1,555 @@
 /**
  * Módulo para exportación a Excel y otros formatos
+ * VERSIÓN ACTUALIZADA CON EXCELJS Y DISEÑO PROFESIONAL
  */
 const ExportModule = {
+    
+    /**
+     * Exporta Excel específico para V3 - Formato Cuadre EDV (DISEÑO PROFESIONAL CON EXCELJS)
+     */
+    async exportCuadreEDV() {
+        const queries = QueryModule.getGeneratedQueries();
+        const params = ParametersModule.getCurrentParameters();
+        
+        if (!queries || Object.keys(queries).length === 0) {
+            alert('No hay queries para exportar. Primero genera los queries en la pestaña correspondiente.');
+            return;
+        }
+
+        try {
+            // Importar ExcelJS dinámicamente
+            const ExcelJS = await this.loadExcelJS();
+            
+            // Crear workbook
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('Cuadre DDV vs EDV', {
+                pageSetup: { paperSize: 9, orientation: 'landscape' }
+            });
+
+            // Configurar anchos de columna (A=15, B-K=20-24 cada una)
+            worksheet.columns = [
+                { width: 15 }, // A - Etiquetas
+                { width: 22 }, // B - Contenido
+                { width: 22 }, // C
+                { width: 22 }, // D
+                { width: 22 }, // E
+                { width: 22 }, // F
+                { width: 22 }, // G
+                { width: 22 }, // H
+                { width: 22 }, // I
+                { width: 22 }, // J
+                { width: 22 }  // K
+            ];
+
+            let currentRow = 1;
+
+            // 1. TÍTULO PRINCIPAL
+            currentRow = this.addMainTitle(worksheet, currentRow);
+            
+            // Congelar paneles en fila 2
+            worksheet.views = [{ state: 'frozen', ySplit: 2 }];
+
+            // 2. SECCIÓN UNIVERSOS
+            currentRow = await this.addUniversosSection(worksheet, currentRow, queries.universos, params);
+
+            // 3. SECCIÓN AGRUPADOS  
+            currentRow = await this.addAgrupadosSection(worksheet, currentRow, queries.agrupados, params);
+
+            // 4. SECCIÓN MINUS
+            currentRow = await this.addMinusSection(worksheet, currentRow, queries.minus1, queries.minus2, params);
+
+            // Generar archivo y descargar
+            const tableName = params.tablaDDV || 'TABLA';
+            const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
+            const filename = `cuadre_${tableName.toUpperCase()}_${periods}.xlsx`;
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            this.downloadExcelBuffer(buffer, filename);
+
+            if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
+                UIModule.showNotification(`Excel de cuadre generado: ${filename}`, 'success', 5000);
+            }
+
+        } catch (error) {
+            console.error('Error generando Excel:', error);
+            alert('Error al generar Excel: ' + error.message);
+        }
+    },
+
+    /**
+     * Carga ExcelJS dinámicamente
+     */
+    async loadExcelJS() {
+        if (window.ExcelJS) {
+            return window.ExcelJS;
+        }
+
+        // Cargar ExcelJS desde CDN
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js';
+        document.head.appendChild(script);
+
+        return new Promise((resolve, reject) => {
+            script.onload = () => resolve(window.ExcelJS);
+            script.onerror = reject;
+        });
+    },
+
+    /**
+     * Agrega título principal
+     */
+    addMainTitle(worksheet, currentRow) {
+        // Combinar celdas A1:K1
+        worksheet.mergeCells(`A${currentRow}:K${currentRow}`);
+        
+        const titleCell = worksheet.getCell(`A${currentRow}`);
+        titleCell.value = 'Generador de Queries de Ratificación v2';
+        
+        // Aplicar estilo al título
+        titleCell.style = {
+            font: { 
+                size: 18, 
+                bold: true, 
+                color: { argb: 'FFFFFFFF' } 
+            },
+            fill: {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF6B46C1' } // Púrpura
+            },
+            alignment: { 
+                horizontal: 'center', 
+                vertical: 'middle' 
+            }
+        };
+        
+        // Altura de fila
+        worksheet.getRow(currentRow).height = 40;
+        
+        return currentRow + 2; // Saltar una fila
+    },
+
+    /**
+     * Agrega sección UNIVERSOS
+     */
+    async addUniversosSection(worksheet, currentRow, queryUniversos, params) {
+        // H2 - Título de sección
+        currentRow = this.addSectionTitle(worksheet, currentRow, 'UNIVERSOS');
+        
+        // Subtítulo "Código"
+        currentRow = this.addSubtitle(worksheet, currentRow, 'Código');
+        
+        // Bloque de código SQL
+        currentRow = this.addCodeBlock(worksheet, currentRow, queryUniversos);
+        
+        // Subtítulo "Resultado"
+        currentRow = this.addSubtitle(worksheet, currentRow, 'Resultado');
+        
+        // Tabla de resultado (ejemplo)
+        currentRow = this.addUniversosResultTable(worksheet, currentRow, params);
+        
+        return currentRow + 2; // Espacio entre secciones
+    },
+
+    /**
+     * Agrega sección AGRUPADOS
+     */
+    async addAgrupadosSection(worksheet, currentRow, queryAgrupados, params) {
+        // H2 - Título de sección
+        currentRow = this.addSectionTitle(worksheet, currentRow, 'AGRUPADOS');
+        
+        // Subtítulo "Código"
+        currentRow = this.addSubtitle(worksheet, currentRow, 'Código');
+        
+        // Bloque de código SQL
+        currentRow = this.addCodeBlock(worksheet, currentRow, queryAgrupados);
+        
+        // Subtítulo "Resultado"
+        currentRow = this.addSubtitle(worksheet, currentRow, 'Resultado');
+        
+        // Tabla de resultado (ejemplo)
+        currentRow = this.addAgrupadosResultTable(worksheet, currentRow, params);
+        
+        return currentRow + 2;
+    },
+
+    /**
+     * Agrega sección MINUS
+     */
+    async addMinusSection(worksheet, currentRow, queryMinus1, queryMinus2, params) {
+        // H2 - Título de sección
+        currentRow = this.addSectionTitle(worksheet, currentRow, 'MINUS');
+        
+        // MINUS 1
+        currentRow = this.addSubtitle(worksheet, currentRow, 'Código MINUS 1 (EDV - DDV)');
+        currentRow = this.addCodeBlock(worksheet, currentRow, queryMinus1);
+        
+        // MINUS 2
+        currentRow = this.addSubtitle(worksheet, currentRow, 'Código MINUS 2 (DDV - EDV)');
+        currentRow = this.addCodeBlock(worksheet, currentRow, queryMinus2);
+        
+        // Subtítulo "Resultado"
+        currentRow = this.addSubtitle(worksheet, currentRow, 'Resultado');
+        
+        // Tabla de resultado (ejemplo)
+        currentRow = this.addMinusResultTable(worksheet, currentRow, params);
+        
+        return currentRow + 2;
+    },
+
+    /**
+     * Agrega título de sección (H2)
+     */
+    addSectionTitle(worksheet, currentRow, title) {
+        const titleCell = worksheet.getCell(`A${currentRow}`);
+        titleCell.value = title;
+        
+        // Aplicar estilo H2
+        titleCell.style = {
+            font: { 
+                size: 14, 
+                bold: true, 
+                color: { argb: 'FFEBCB8B' } // Amarillo suave
+            },
+            fill: {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF2E3440' } // Dark
+            },
+            alignment: { 
+                horizontal: 'left', 
+                vertical: 'middle' 
+            }
+        };
+        
+        worksheet.getRow(currentRow).height = 30;
+        
+        return currentRow + 1;
+    },
+
+    /**
+     * Agrega subtítulo
+     */
+    addSubtitle(worksheet, currentRow, subtitle) {
+        const subtitleCell = worksheet.getCell(`A${currentRow}`);
+        subtitleCell.value = subtitle;
+        
+        subtitleCell.style = {
+            font: { 
+                size: 12, 
+                bold: true, 
+                color: { argb: 'FF2E3440' } 
+            },
+            alignment: { 
+                horizontal: 'left', 
+                vertical: 'middle' 
+            }
+        };
+        
+        return currentRow + 1;
+    },
+
+    /**
+     * Agrega bloque de código SQL con manejo de límite de 32,767 caracteres
+     */
+    addCodeBlock(worksheet, currentRow, sqlCode) {
+        if (!sqlCode) {
+            // Código no disponible
+            worksheet.mergeCells(`B${currentRow}:K${currentRow}`);
+            const cell = worksheet.getCell(`B${currentRow}`);
+            cell.value = '-- Query no disponible';
+            this.applyCodeStyle(cell);
+            return currentRow + 1;
+        }
+
+        // Dividir el SQL en trozos seguros (límite 32,760 caracteres)
+        const chunks = this.splitSQLIntoChunks(sqlCode, 32760);
+        
+        chunks.forEach((chunk, index) => {
+            // Combinar celdas B:K para el chunk
+            worksheet.mergeCells(`B${currentRow}:K${currentRow}`);
+            const cell = worksheet.getCell(`B${currentRow}`);
+            
+            // Agregar saltos de línea cada 120 caracteres para mejor legibilidad
+            const formattedChunk = this.addLineBreaks(chunk, 120);
+            cell.value = formattedChunk;
+            
+            // Aplicar estilo de código
+            this.applyCodeStyle(cell);
+            
+            // Etiqueta para chunks adicionales
+            if (index > 0) {
+                const labelCell = worksheet.getCell(`A${currentRow}`);
+                labelCell.value = 'Código (cont.)';
+                labelCell.style = {
+                    font: { size: 10, italic: true, color: { argb: 'FF6C7B7F' } },
+                    alignment: { horizontal: 'left', vertical: 'top' }
+                };
+            }
+            
+            // Altura de fila aumentada para acomodar texto wrapped
+            const lineCount = formattedChunk.split('\n').length;
+            worksheet.getRow(currentRow).height = Math.max(60, lineCount * 15);
+            
+            currentRow++;
+        });
+        
+        return currentRow;
+    },
+
+    /**
+     * Aplica estilo de código a una celda
+     */
+    applyCodeStyle(cell) {
+        cell.style = {
+            font: { 
+                name: 'Consolas',
+                size: 10, 
+                color: { argb: 'FFECEFF4' } 
+            },
+            fill: {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FF3B4252' } 
+            },
+            alignment: { 
+                horizontal: 'left', 
+                vertical: 'top',
+                wrapText: true 
+            },
+            border: {
+                top: { style: 'thin', color: { argb: 'FF4C566A' } },
+                left: { style: 'thin', color: { argb: 'FF4C566A' } },
+                bottom: { style: 'thin', color: { argb: 'FF4C566A' } },
+                right: { style: 'thin', color: { argb: 'FF4C566A' } }
+            }
+        };
+    },
+
+    /**
+     * Divide SQL en chunks seguros para Excel
+     */
+    splitSQLIntoChunks(sql, maxChars) {
+        if (sql.length <= maxChars) {
+            return [sql];
+        }
+        
+        const chunks = [];
+        let currentPos = 0;
+        
+        while (currentPos < sql.length) {
+            let chunkEnd = currentPos + maxChars;
+            
+            // Si no es el último chunk, buscar un salto de línea cercano
+            if (chunkEnd < sql.length) {
+                const nearlineBreak = sql.lastIndexOf('\n', chunkEnd);
+                if (nearlineBreak > currentPos + maxChars * 0.8) {
+                    chunkEnd = nearlineBreak + 1;
+                }
+            }
+            
+            chunks.push(sql.substring(currentPos, chunkEnd));
+            currentPos = chunkEnd;
+        }
+        
+        return chunks;
+    },
+
+    /**
+     * Agrega saltos de línea cada N caracteres
+     */
+    addLineBreaks(text, lineLength) {
+        const lines = text.split('\n');
+        const result = [];
+        
+        lines.forEach(line => {
+            if (line.length <= lineLength) {
+                result.push(line);
+            } else {
+                // Dividir líneas largas en múltiples líneas
+                let pos = 0;
+                while (pos < line.length) {
+                    result.push(line.substring(pos, pos + lineLength));
+                    pos += lineLength;
+                }
+            }
+        });
+        
+        return result.join('\n');
+    },
+
+    /**
+     * Agrega tabla de resultado para UNIVERSOS
+     */
+    addUniversosResultTable(worksheet, currentRow, params) {
+        // Encabezados
+        const headers = ['codmes', 'numreg_ddv', 'numreg_edv', 'diff_numreg', 'status'];
+        headers.forEach((header, index) => {
+            const cell = worksheet.getCell(currentRow, index + 2); // Empezar en columna B
+            cell.value = header;
+            this.applyHeaderStyle(cell);
+        });
+        
+        currentRow++;
+        
+        // Datos de ejemplo
+        const exampleData = [
+            [202505, 2765145, 2765145, 0, '✅ IGUALES'],
+            [202506, 2758763, 2758763, 0, '✅ IGUALES'],
+            [202507, 2787328, 2787328, 0, '✅ IGUALES']
+        ];
+        
+        exampleData.forEach(row => {
+            row.forEach((value, index) => {
+                const cell = worksheet.getCell(currentRow, index + 2);
+                cell.value = value;
+                this.applyDataStyle(cell, index === 3); // Destacar columna diff
+            });
+            currentRow++;
+        });
+        
+        return currentRow;
+    },
+
+    /**
+     * Agrega tabla de resultado para AGRUPADOS
+     */
+    addAgrupadosResultTable(worksheet, currentRow, params) {
+        // Encabezados
+        const headers = ['capa', 'codmes', 'count_campos', 'sum_campos'];
+        headers.forEach((header, index) => {
+            const cell = worksheet.getCell(currentRow, index + 2);
+            cell.value = header;
+            this.applyHeaderStyle(cell);
+        });
+        
+        currentRow++;
+        
+        // Datos de ejemplo
+        const exampleData = [
+            ['EDV', 202505, 150, 1250000.50],
+            ['DDV', 202505, 150, 1250000.50],
+            ['EDV', 202506, 148, 1180000.25],
+            ['DDV', 202506, 148, 1180000.25]
+        ];
+        
+        exampleData.forEach(row => {
+            row.forEach((value, index) => {
+                const cell = worksheet.getCell(currentRow, index + 2);
+                cell.value = value;
+                this.applyDataStyle(cell);
+            });
+            currentRow++;
+        });
+        
+        return currentRow;
+    },
+
+    /**
+     * Agrega tabla de resultado para MINUS
+     */
+    addMinusResultTable(worksheet, currentRow, params) {
+        // Encabezados
+        const headers = ['query', 'registros_encontrados', 'status'];
+        headers.forEach((header, index) => {
+            const cell = worksheet.getCell(currentRow, index + 2);
+            cell.value = header;
+            this.applyHeaderStyle(cell);
+        });
+        
+        currentRow++;
+        
+        // Datos de ejemplo
+        const exampleData = [
+            ['MINUS 1 (EDV - DDV)', 0, '✅ Sin diferencias'],
+            ['MINUS 2 (DDV - EDV)', 0, '✅ Sin diferencias']
+        ];
+        
+        exampleData.forEach(row => {
+            row.forEach((value, index) => {
+                const cell = worksheet.getCell(currentRow, index + 2);
+                cell.value = value;
+                this.applyDataStyle(cell);
+            });
+            currentRow++;
+        });
+        
+        return currentRow;
+    },
+
+    /**
+     * Aplica estilo a encabezados de tabla
+     */
+    applyHeaderStyle(cell) {
+        cell.style = {
+            font: { 
+                size: 11, 
+                bold: true, 
+                color: { argb: 'FF2E3440' } 
+            },
+            fill: {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFD8DEE9' } // Gris claro
+            },
+            alignment: { 
+                horizontal: 'center', 
+                vertical: 'middle' 
+            },
+            border: {
+                top: { style: 'thin', color: { argb: 'FF4C566A' } },
+                left: { style: 'thin', color: { argb: 'FF4C566A' } },
+                bottom: { style: 'thin', color: { argb: 'FF4C566A' } },
+                right: { style: 'thin', color: { argb: 'FF4C566A' } }
+            }
+        };
+    },
+
+    /**
+     * Aplica estilo a datos de tabla
+     */
+    applyDataStyle(cell, isDiff = false) {
+        cell.style = {
+            font: { 
+                size: 10, 
+                color: { argb: 'FF2E3440' },
+                bold: isDiff
+            },
+            fill: {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: isDiff ? 'FFFFF8DB' : 'FFFFFFFF' } // Amarillo suave para diff
+            },
+            alignment: { 
+                horizontal: typeof cell.value === 'number' ? 'right' : 'left', 
+                vertical: 'middle' 
+            },
+            border: {
+                top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+            },
+            numFmt: typeof cell.value === 'number' && cell.value > 1000 ? '#,##0' : undefined
+        };
+    },
+
+    /**
+     * Descarga buffer de Excel
+     */
+    downloadExcelBuffer(buffer, filename) {
+        const blob = new Blob([buffer], { 
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    },
     
     /**
      * Exporta toda la información a Excel
