@@ -714,7 +714,7 @@ const ExportModule = {
     },
 
     /**
-     * Exporta Excel específico para V3 - Formato Cuadre EDV
+     * Exporta Excel específico para V3 - Formato Cuadre EDV (DISEÑO MEJORADO)
      */
     exportCuadreEDV() {
         const queries = QueryModule.getGeneratedQueries();
@@ -732,10 +732,10 @@ const ExportModule = {
         
         const wb = XLSX.utils.book_new();
         
-        // Crear las 3 pestañas específicas
-        this.createUniversoSheet(wb, queries.universos);
-        this.createAgrupadoSheet(wb, queries.agrupados);
-        this.createMinusSheet(wb, queries.minus1, queries.minus2);
+        // Crear las 3 pestañas con diseño mejorado
+        this.createUniversoSheetDesign(wb, queries.universos, params);
+        this.createAgrupadoSheetDesign(wb, queries.agrupados, params);
+        this.createMinusSheetDesign(wb, queries.minus1, queries.minus2, params);
         
         // Descargar
         XLSX.writeFile(wb, filename);
@@ -746,67 +746,294 @@ const ExportModule = {
     },
 
     /**
-     * Crea hoja Universo
+     * Crea hoja Universo con DISEÑO PROFESIONAL
      * @param {Object} wb - Workbook
      * @param {string} queryUniverso - Query de universos
+     * @param {Object} params - Parámetros
      */
-    createUniversoSheet(wb, queryUniverso) {
-        const lines = this.splitQueryIntoLogicalParts(queryUniverso, 'SELECT');
-        
+    createUniversoSheetDesign(wb, queryUniverso, params) {
         const data = [
-            ['QUERY UNIVERSO - Compara número total de registros'],
-            [''],
-            ...lines.map((line, index) => [`Parte ${index + 1}`, line])
+            // ENCABEZADO PRINCIPAL
+            ['CUADRE DDV vs EDV - ANÁLISIS DE UNIVERSOS', '', '', '', ''],
+            ['', '', '', '', ''],
+            
+            // INFORMACIÓN DEL PROYECTO
+            ['INFORMACIÓN DEL PROYECTO', '', '', '', ''],
+            ['Tabla DDV:', `${params.esquemaDDV}.${params.tablaDDV}`, '', '', ''],
+            ['Tabla EDV:', `${params.esquemaEDV}.${params.tablaEDV}`, '', '', ''],
+            ['Períodos:', params.periodos, '', '', ''],
+            ['Fecha:', new Date().toLocaleDateString('es-ES'), '', '', ''],
+            ['', '', '', '', ''],
+            
+            // DESCRIPCIÓN
+            ['DESCRIPCIÓN', '', '', '', ''],
+            ['Este query compara el número total de registros entre las tablas DDV y EDV', '', '', '', ''],
+            ['para verificar que ambas tengan la misma cantidad de datos por período.', '', '', '', ''],
+            ['', '', '', '', ''],
+            
+            // QUERY SQL CON FORMATO
+            ['QUERY SQL', '', '', '', ''],
+            ['Código:', '', '', '', ''],
+            ...this.formatQueryForDisplay(queryUniverso),
+            ['', '', '', '', ''],
+            
+            // INTERPRETACIÓN DE RESULTADOS
+            ['INTERPRETACIÓN DE RESULTADOS', '', '', '', ''],
+            ['• diff_numreg = 0: Las tablas tienen la misma cantidad de registros ✓', '', '', '', ''],
+            ['• diff_numreg > 0: Faltan registros en EDV (Revisar proceso) ⚠️', '', '', '', ''],
+            ['• diff_numreg < 0: Sobran registros en EDV (Revisar duplicados) ⚠️', '', '', '', ''],
+            ['', '', '', '', ''],
+            
+            // ACCIONES RECOMENDADAS
+            ['ACCIONES SEGÚN RESULTADO', '', '', '', ''],
+            ['1. Si diff_numreg = 0: Continuar con siguiente validación', '', '', '', ''],
+            ['2. Si diff_numreg ≠ 0: Investigar causa de la diferencia', '', '', '', ''],
+            ['3. Validar filtros de período aplicados', '', '', '', ''],
+            ['4. Revisar proceso de carga de datos', '', '', '', '']
         ];
         
         const ws = XLSX.utils.aoa_to_sheet(data);
-        ws['!cols'] = [{ width: 15 }, { width: 100 }];
+        
+        // APLICAR DISEÑO PROFESIONAL
+        this.applyUniversoStyling(ws);
+        
         XLSX.utils.book_append_sheet(wb, ws, 'Universo');
     },
 
     /**
-     * Crea hoja Agrupado (la más compleja)
+     * Crea hoja Agrupado con DISEÑO PROFESIONAL
      * @param {Object} wb - Workbook
      * @param {string} queryAgrupado - Query agrupado
+     * @param {Object} params - Parámetros
      */
-    createAgrupadoSheet(wb, queryAgrupado) {
-        const parts = this.splitComplexQuery(queryAgrupado);
-        
+    createAgrupadoSheetDesign(wb, queryAgrupado, params) {
         const data = [
-            ['QUERY AGRUPADO - Compara métricas por campo'],
-            [''],
-            ['PARTE', 'CODIGO SQL'],
-            ...parts.map((part, index) => [`${index + 1}`, part])
+            // ENCABEZADO PRINCIPAL
+            ['CUADRE DDV vs EDV - ANÁLISIS AGRUPADO POR CAMPOS', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            
+            // INFORMACIÓN DEL PROYECTO
+            ['INFORMACIÓN DEL PROYECTO', '', '', '', '', ''],
+            ['Tabla DDV:', `${params.esquemaDDV}.${params.tablaDDV}`, '', '', '', ''],
+            ['Tabla EDV:', `${params.esquemaEDV}.${params.tablaEDV}`, '', '', '', ''],
+            ['Períodos:', params.periodos, '', '', '', ''],
+            ['Fecha:', new Date().toLocaleDateString('es-ES'), '', '', '', ''],
+            ['', '', '', '', '', ''],
+            
+            // DESCRIPCIÓN
+            ['DESCRIPCIÓN', '', '', '', '', ''],
+            ['Este query compara las métricas agregadas (COUNT/SUM) campo por campo', '', '', '', '', ''],
+            ['entre las tablas DDV y EDV para identificar diferencias específicas.', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            
+            // ESTRUCTURA DEL RESULTADO
+            ['ESTRUCTURA DEL RESULTADO', '', '', '', '', ''],
+            ['Columna', 'Descripción', 'Valores Esperados', '', '', ''],
+            ['capa', 'Identifica la fuente (DDV/EDV)', 'DDV, EDV', '', '', ''],
+            ['codmes', 'Período analizado', params.periodos, '', '', ''],
+            ['campos_count', 'Conteos por campo', 'Números enteros', '', '', ''],
+            ['campos_sum', 'Sumas por campo', 'Números decimales', '', '', ''],
+            ['', '', '', '', '', ''],
+            
+            // QUERY SQL
+            ['QUERY SQL', '', '', '', '', ''],
+            ['Código:', '', '', '', '', ''],
+            ...this.formatQueryForDisplay(queryAgrupado),
+            ['', '', '', '', '', ''],
+            
+            // ANÁLISIS RECOMENDADO
+            ['ANÁLISIS RECOMENDADO', '', '', '', '', ''],
+            ['1. Ordenar por codmes y capa para comparación lado a lado', '', '', '', '', ''],
+            ['2. Verificar que cada campo tenga valores idénticos entre DDV y EDV', '', '', '', '', ''],
+            ['3. Identificar campos con diferencias para investigación detallada', '', '', '', '', ''],
+            ['4. Documentar cualquier discrepancia encontrada', '', '', '', '', '']
         ];
         
         const ws = XLSX.utils.aoa_to_sheet(data);
-        ws['!cols'] = [{ width: 10 }, { width: 120 }];
+        
+        // APLICAR DISEÑO PROFESIONAL
+        this.applyAgrupadoStyling(ws);
+        
         XLSX.utils.book_append_sheet(wb, ws, 'Agrupado');
     },
 
     /**
-     * Crea hoja Minus
+     * Crea hoja Minus con DISEÑO PROFESIONAL
      * @param {Object} wb - Workbook
      * @param {string} queryMinus1 - Query MINUS 1
      * @param {string} queryMinus2 - Query MINUS 2
+     * @param {Object} params - Parámetros
      */
-    createMinusSheet(wb, queryMinus1, queryMinus2) {
-        const parts1 = this.splitComplexQuery(queryMinus1);
-        const parts2 = this.splitComplexQuery(queryMinus2);
-        
+    createMinusSheetDesign(wb, queryMinus1, queryMinus2, params) {
         const data = [
-            ['QUERIES MINUS - Detecta diferencias'],
-            [''],
-            ['MINUS 1 (EDV - DDV)', ''],
-            ...parts1.map((part, index) => [`Parte ${index + 1}`, part]),
-            [''],
-            ['MINUS 2 (DDV - EDV)', ''],
-            ...parts2.map((part, index) => [`Parte ${index + 1}`, part])
+            // ENCABEZADO PRINCIPAL
+            ['CUADRE DDV vs EDV - ANÁLISIS DE DIFERENCIAS (MINUS)', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            
+            // INFORMACIÓN DEL PROYECTO
+            ['INFORMACIÓN DEL PROYECTO', '', '', '', '', ''],
+            ['Tabla DDV:', `${params.esquemaDDV}.${params.tablaDDV}`, '', '', '', ''],
+            ['Tabla EDV:', `${params.esquemaEDV}.${params.tablaEDV}`, '', '', '', ''],
+            ['Períodos:', params.periodos, '', '', '', ''],
+            ['Fecha:', new Date().toLocaleDateString('es-ES'), '', '', '', ''],
+            ['', '', '', '', '', ''],
+            
+            // DESCRIPCIÓN
+            ['DESCRIPCIÓN', '', '', '', '', ''],
+            ['Los queries MINUS identifican registros que están en una tabla pero no en la otra.', '', '', '', '', ''],
+            ['Ayudan a detectar datos faltantes o excedentes entre DDV y EDV.', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            
+            // QUERY MINUS 1
+            ['QUERY MINUS 1: EDV - DDV', '', '', '', '', ''],
+            ['Encuentra registros que están en EDV pero NO en DDV', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            ['Código:', '', '', '', '', ''],
+            ...this.formatQueryForDisplay(queryMinus1, 'MINUS1'),
+            ['', '', '', '', '', ''],
+            
+            // QUERY MINUS 2
+            ['QUERY MINUS 2: DDV - EDV', '', '', '', '', ''],
+            ['Encuentra registros que están en DDV pero NO en EDV', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            ['Código:', '', '', '', '', ''],
+            ...this.formatQueryForDisplay(queryMinus2, 'MINUS2'),
+            ['', '', '', '', '', ''],
+            
+            // INTERPRETACIÓN
+            ['INTERPRETACIÓN DE RESULTADOS', '', '', '', '', ''],
+            ['• Si ambos queries devuelven 0 registros: Las tablas son idénticas ✓', '', '', '', '', ''],
+            ['• Si MINUS 1 devuelve registros: Hay datos en EDV que faltan en DDV ⚠️', '', '', '', '', ''],
+            ['• Si MINUS 2 devuelve registros: Hay datos en DDV que faltan en EDV ⚠️', '', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            
+            // ACCIONES CORRECTIVAS
+            ['ACCIONES CORRECTIVAS', '', '', '', '', ''],
+            ['1. Ejecutar ambos queries por separado', '', '', '', '', ''],
+            ['2. Analizar los registros devueltos en detalle', '', '', '', '', ''],
+            ['3. Verificar procesos de ETL y transformación de datos', '', '', '', '', ''],
+            ['4. Coordinar con el equipo técnico para resolver diferencias', '', '', '', '', '']
         ];
         
         const ws = XLSX.utils.aoa_to_sheet(data);
-        ws['!cols'] = [{ width: 20 }, { width: 100 }];
+        
+        // APLICAR DISEÑO PROFESIONAL
+        this.applyMinusStyling(ws);
+        
         XLSX.utils.book_append_sheet(wb, ws, 'Minus');
+    },
+
+    /**
+     * Formatea query para mejor visualización en Excel
+     * @param {string} query - Query SQL
+     * @param {string} prefix - Prefijo para identificar secciones
+     * @returns {Array} - Líneas formateadas para Excel
+     */
+    formatQueryForDisplay(query, prefix = '') {
+        if (!query) return [['-- Query no disponible', '', '', '', '']];
+        
+        const lines = query.split('\n');
+        const formattedLines = [];
+        
+        lines.forEach((line, index) => {
+            // Limitar longitud de línea para Excel
+            const cleanLine = line.trim();
+            if (cleanLine.length > 0) {
+                // Dividir líneas muy largas
+                if (cleanLine.length > 120) {
+                    const chunks = cleanLine.match(/.{1,120}/g) || [cleanLine];
+                    chunks.forEach((chunk, chunkIndex) => {
+                        formattedLines.push([
+                            chunkIndex === 0 ? cleanLine.substring(0, 20) + '...' : '...',
+                            chunk,
+                            '', '', ''
+                        ]);
+                    });
+                } else {
+                    formattedLines.push([cleanLine, '', '', '', '']);
+                }
+            }
+        });
+        
+        return formattedLines;
+    },
+
+    /**
+     * Aplica estilos profesionales a la hoja Universo
+     * @param {Object} ws - Worksheet
+     */
+    applyUniversoStyling(ws) {
+        // Configurar anchos de columna
+        ws['!cols'] = [
+            { width: 25 }, // Columna A - Títulos
+            { width: 40 }, // Columna B - Contenido
+            { width: 20 }, // Columna C - Extra
+            { width: 15 }, // Columna D - Extra
+            { width: 15 }  // Columna E - Extra
+        ];
+        
+        // Configurar combinación de celdas para títulos
+        ws['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }, // Título principal
+            { s: { r: 2, c: 0 }, e: { r: 2, c: 4 } }, // Información del proyecto
+            { s: { r: 8, c: 0 }, e: { r: 8, c: 4 } }, // Descripción
+            { s: { r: 14, c: 0 }, e: { r: 14, c: 4 } }, // Query SQL
+            { s: { r: 20, c: 0 }, e: { r: 20, c: 4 } }, // Interpretación
+            { s: { r: 26, c: 0 }, e: { r: 26, c: 4 } }  // Acciones
+        ];
+    },
+
+    /**
+     * Aplica estilos profesionales a la hoja Agrupado
+     * @param {Object} ws - Worksheet
+     */
+    applyAgrupadoStyling(ws) {
+        // Configurar anchos de columna
+        ws['!cols'] = [
+            { width: 25 }, // Columna A - Títulos
+            { width: 40 }, // Columna B - Contenido
+            { width: 25 }, // Columna C - Valores
+            { width: 15 }, // Columna D - Extra
+            { width: 15 }, // Columna E - Extra
+            { width: 15 }  // Columna F - Extra
+        ];
+        
+        // Configurar combinación de celdas para títulos
+        ws['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Título principal
+            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }, // Información del proyecto
+            { s: { r: 8, c: 0 }, e: { r: 8, c: 5 } }, // Descripción
+            { s: { r: 12, c: 0 }, e: { r: 12, c: 5 } }, // Estructura
+            { s: { r: 20, c: 0 }, e: { r: 20, c: 5 } }, // Query SQL
+            { s: { r: 25, c: 0 }, e: { r: 25, c: 5 } }  // Análisis
+        ];
+    },
+
+    /**
+     * Aplica estilos profesionales a la hoja Minus
+     * @param {Object} ws - Worksheet
+     */
+    applyMinusStyling(ws) {
+        // Configurar anchos de columna
+        ws['!cols'] = [
+            { width: 30 }, // Columna A - Títulos
+            { width: 50 }, // Columna B - Contenido
+            { width: 20 }, // Columna C - Extra
+            { width: 15 }, // Columna D - Extra
+            { width: 15 }, // Columna E - Extra
+            { width: 15 }  // Columna F - Extra
+        ];
+        
+        // Configurar combinación de celdas para títulos
+        ws['!merges'] = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Título principal
+            { s: { r: 2, c: 0 }, e: { r: 2, c: 5 } }, // Información del proyecto
+            { s: { r: 8, c: 0 }, e: { r: 8, c: 5 } }, // Descripción
+            { s: { r: 12, c: 0 }, e: { r: 12, c: 5 } }, // MINUS 1
+            { s: { r: 20, c: 0 }, e: { r: 20, c: 5 } }, // MINUS 2
+            { s: { r: 28, c: 0 }, e: { r: 28, c: 5 } }, // Interpretación
+            { s: { r: 34, c: 0 }, e: { r: 34, c: 5 } }  // Acciones
+        ];
     },
 
     /**
