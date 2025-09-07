@@ -217,6 +217,27 @@
                 </button>
             </div>
             
+            <!-- Sección Solo Queries -->
+            <div class="export-section">
+                <h4>🔍 Export Solo Queries</h4>
+                <p>Archivos ligeros con únicamente los queries de ratificación</p>
+                
+                <div class="export-buttons">
+                    <button class="btn" onclick="ExportModule.exportQueries('sql')" title="Archivo SQL ejecutable">
+                        📄 Descargar .SQL
+                    </button>
+                    <button class="btn" onclick="ExportModule.exportQueries('txt')" title="Archivo de texto con información completa">
+                        📝 Descargar .TXT
+                    </button>
+                    <button class="btn" onclick="ExportModule.exportQueriesExcel()" title="Excel solo con queries">
+                        📊 Descargar .XLSX (Solo Queries)
+                    </button>
+                    <button class="btn btn-warning" onclick="ExportModule.exportAllQueriesTXT()" title="Todos los queries en un archivo TXT">
+                        📋 TODOS LOS QUERIES (.TXT)
+                    </button>
+                </div>
+            </div>
+            
             <!-- Sección Excel Completo Original -->
             <div class="export-section">
                 <h4>📋 Excel Completo (Formato Original)</h4>
