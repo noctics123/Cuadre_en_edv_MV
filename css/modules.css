@@ -180,6 +180,9 @@
 .export-sections {
     display: grid;
     gap: var(--spacing-xl);
+    width: 100%;
+    max-width: 1000px;
+    margin: 0 auto;
 }
 
 .export-section {
@@ -188,6 +191,7 @@
     border-radius: var(--border-radius);
     padding: var(--spacing-xl);
     border-left: 4px solid var(--primary-color);
+    width: 100%;
 }
 
 .export-section h4 {
@@ -203,27 +207,32 @@
     color: var(--secondary-color);
     margin-bottom: var(--spacing-lg);
     font-size: var(--font-size-sm);
+    text-align: left;
 }
 
 .export-buttons {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: var(--spacing-md);
-    flex-wrap: wrap;
+    width: 100%;
 }
 
 .export-buttons .btn {
-    flex: 1;
-    min-width: 120px;
+    width: 100%;
+    min-width: 180px;
+    justify-content: center;
 }
 
 .quick-export .export-buttons {
     gap: var(--spacing-sm);
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
 }
 
 .quick-export .btn {
     padding: var(--spacing-sm) var(--spacing-md);
     font-size: var(--font-size-sm);
     min-width: 80px;
+    width: 100%;
 }
 
 /* Individual export groups */
