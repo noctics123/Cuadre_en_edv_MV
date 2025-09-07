@@ -57,7 +57,7 @@
                 <textarea id="renameRules" placeholder="codclaveunicocli:cod_uni_cocli&#10;otrocampo:otro_campo_nuevo">codclaveunicocli:cod_uni_cocli</textarea>
             </div>
             
-            <button class="btn" onclick="saveParameters()">Guardar Parámetros</button>
+            <button class="btn" onclick="ParametersModule.saveParameters()">Guardar Parámetros</button>
         </div>
         
         <!-- TAB 2: DESCRIBE TABLA -->
@@ -67,13 +67,13 @@
             <div class="row">
                 <div class="form-group">
                     <label>Seleccionar tabla del repositorio</label>
-                    <select id="tableSelector" onchange="loadTableFromRepo()">
+                    <select id="tableSelector" onchange="RepositoryModule.loadTableFromRepo()">
                         <option value="">-- Seleccionar tabla existente --</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label>Buscar tabla</label>
-                    <input type="text" id="tableSearch" placeholder="Buscar por nombre..." oninput="filterTables()">
+                    <input type="text" id="tableSearch" placeholder="Buscar por nombre..." oninput="RepositoryModule.filterTables()">
                 </div>
             </div>
             
@@ -83,10 +83,10 @@
             </div>
             
             <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
-                <button class="btn" onclick="detectCreateTable()" style="background: #28a745;">🔍 Detectar CREATE TABLE</button>
-                <button class="btn" onclick="parseCreateTable()">Analizar Estructura</button>
-                <button class="btn btn-secondary" onclick="saveToRepository()">Guardar en Repositorio</button>
-                <button class="btn btn-secondary" onclick="showRepositoryManager()">Gestionar Repositorio</button>
+                <button class="btn" onclick="TableAnalysisModule.detectCreateTable()" style="background: #28a745;">🔍 Detectar CREATE TABLE</button>
+                <button class="btn" onclick="TableAnalysisModule.parseCreateTable()">Analizar Estructura</button>
+                <button class="btn btn-secondary" onclick="RepositoryModule.saveToRepository()">Guardar en Repositorio</button>
+                <button class="btn btn-secondary" onclick="RepositoryModule.showRepositoryManager()">Gestionar Repositorio</button>
             </div>
             
             <div class="form-group">
@@ -116,7 +116,7 @@
         <div id="queries" class="tab-content">
             <h3>Queries de Ratificación</h3>
             
-            <button class="btn btn-success" onclick="generateAllQueries()">Generar Todos los Queries</button>
+            <button class="btn btn-success" onclick="QueryModule.generateAllQueries()">Generar Todos los Queries</button>
             
             <div id="queryOutputs"></div>
         </div>
@@ -130,20 +130,38 @@
             <div class="row">
                 <div class="form-group">
                     <label>Filtrar por esquema</label>
-                    <select id="schemaFilter" onchange="filterRepository()">
+                    <select id="schemaFilter" onchange="RepositoryModule.filterRepository()">
                         <option value="">Todos los esquemas</option>
                     </select>
                 </div>
                 <div class="form-group">
+                    <label>Filtrar por tabla</label>
+                    <select id="tableFilter" onchange="RepositoryModule.filterRepository()">
+                        <option value="">Todas las tablas</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="form-group">
                     <label>Buscar tabla</label>
-                    <input type="text" id="repoSearch" placeholder="Buscar tabla..." oninput="filterRepository()">
+                    <input type="text" id="repoSearch" placeholder="Buscar tabla..." oninput="RepositoryModule.filterRepository()">
+                </div>
+                <div class="form-group">
+                    <label>Mostrar</label>
+                    <select id="showFilter" onchange="RepositoryModule.filterRepository()">
+                        <option value="all">Todas las tablas</option>
+                        <option value="ddv">Solo DDV</option>
+                        <option value="edv">Solo EDV</option>
+                        <option value="recent">Agregadas recientemente</option>
+                    </select>
                 </div>
             </div>
             
             <div style="margin-bottom: 20px;">
-                <button class="btn" onclick="importFromFile()">📁 Importar Archivo .sql/.txt</button>
-                <button class="btn btn-secondary" onclick="exportRepository()">📤 Exportar Repositorio</button>
-                <button class="btn btn-secondary" onclick="clearRepository()">🗑️ Limpiar Todo</button>
+                <button class="btn" onclick="RepositoryModule.importFromFile()">📁 Importar Archivo .sql/.txt</button>
+                <button class="btn btn-secondary" onclick="RepositoryModule.exportRepository()">📤 Exportar Repositorio</button>
+                <button class="btn btn-secondary" onclick="RepositoryModule.clearRepository()">🗑️ Limpiar Todo</button>
             </div>
             
             <div class="form-group">
@@ -158,7 +176,7 @@
             
             <div id="repositoryList"></div>
             
-            <input type="file" id="fileImport" style="display: none" accept=".sql,.txt" onchange="handleFileImport(event)">
+            <input type="file" id="fileImport" style="display: none" accept=".sql,.txt" onchange="RepositoryModule.handleFileImport(event)">
         </div>
         
         <!-- TAB 5: EXPORTAR EXCEL -->
@@ -173,7 +191,7 @@
                 </select>
             </div>
             
-            <button class="btn btn-success" onclick="exportToExcel()">Generar Excel</button>
+            <button class="btn btn-success" onclick="ExportModule.exportToExcel()">Generar Excel</button>
             
             <div id="exportPreview"></div>
         </div>
@@ -182,13 +200,23 @@
     <!-- Modal para vista completa -->
     <div id="tableModal" class="modal">
         <div class="modal-content">
-            <span class="close" onclick="closeModal()">&times;</span>
+            <span class="close" onclick="UIModule.closeModal()">&times;</span>
             <h3 id="modalTitle"></h3>
             <div id="modalContent" style="font-family: 'Courier New', monospace; background: #f8f9fa; padding: 15px; border-radius: 4px; white-space: pre-wrap;"></div>
         </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="script.js"></script>
+    
+    <!-- Scripts modulares -->
+    <script src="js/utils.js"></script>
+    <script src="js/regex-patterns.js"></script>
+    <script src="js/table-analysis.js"></script>
+    <script src="js/parameters.js"></script>
+    <script src="js/repository.js"></script>
+    <script src="js/query-generator.js"></script>
+    <script src="js/export.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
