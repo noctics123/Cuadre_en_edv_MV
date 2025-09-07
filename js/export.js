@@ -94,7 +94,7 @@ const ExportModule = {
         const queries = QueryModule.getGeneratedQueries();
         
         const summaryData = [
-            ['🏗️ RESUMEN DE CUADRE DDV vs EDV', '', ''],
+            ['📊 RESUMEN DE CUADRE DDV vs EDV', '', ''],
             ['', '', ''],
             ['📊 INFORMACIÓN GENERAL', '', ''],
             ['Tabla DDV', `${params.esquemaDDV}.${params.tablaDDV}`, ''],
@@ -104,7 +104,7 @@ const ExportModule = {
             ['Campos COUNT', tableStructure.filter(f => f.aggregateFunction === 'count').length, ''],
             ['Campos SUM', tableStructure.filter(f => f.aggregateFunction === 'sum').length, ''],
             ['', '', ''],
-            ['📝 QUERIES GENERADOS', '', ''],
+            ['🔍 QUERIES GENERADOS', '', ''],
             ['Query Universos', queries.universos ? '✅ Generado' : '❌ No generado', ''],
             ['Query Agrupados', queries.agrupados ? '✅ Generado' : '❌ No generado', ''],
             ['Query MINUS (EDV-DDV)', queries.minus1 ? '✅ Generado' : '❌ No generado', ''],
@@ -272,7 +272,7 @@ const ExportModule = {
     },
 
     /**
-     * Agrega hoja de queries
+     * Agrega hoja de queries (con manejo de límite de caracteres)
      * @param {Object} wb - Workbook
      */
     addQueriesSheet(wb) {
@@ -283,28 +283,28 @@ const ExportModule = {
             [
                 'UNIVERSOS',
                 'Compara número total de registros entre DDV y EDV',
-                queries.universos || '',
+                this.truncateForExcel(queries.universos || ''),
                 queries.universos ? queries.universos.split('\n').length : 0,
                 queries.universos ? queries.universos.length : 0
             ],
             [
                 'AGRUPADOS',
                 'Compara métricas agregadas por cada campo',
-                queries.agrupados || '',
+                this.truncateForExcel(queries.agrupados || ''),
                 queries.agrupados ? queries.agrupados.split('\n').length : 0,
                 queries.agrupados ? queries.agrupados.length : 0
             ],
             [
                 'MINUS_EDV_DDV',
                 'Registros que están en EDV pero NO en DDV',
-                queries.minus1 || '',
+                this.truncateForExcel(queries.minus1 || ''),
                 queries.minus1 ? queries.minus1.split('\n').length : 0,
                 queries.minus1 ? queries.minus1.length : 0
             ],
             [
                 'MINUS_DDV_EDV',
                 'Registros que están en DDV pero NO en EDV',
-                queries.minus2 || '',
+                this.truncateForExcel(queries.minus2 || ''),
                 queries.minus2 ? queries.minus2.split('\n').length : 0,
                 queries.minus2 ? queries.minus2.length : 0
             ]
@@ -586,22 +586,6 @@ const ExportModule = {
     },
 
     /**
-     * Genera nombre de archivo para queries específicos
-     * @param {string} extension - Extensión del archivo
-     * @returns {string} - Nombre del archivo
-     */
-    generateQueriesFilename(extension) {
-        const params = ParametersModule.getCurrentParameters();
-        const date = new Date().toISOString().split('T')[0];
-        const time = new Date().toTimeString().split(' ')[0].replace(/:/g, '');
-        
-        const tableName = params.tablaDDV || 'tabla';
-        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
-        
-        return `queries_${tableName}_${periods}_${date}_${time}.${extension}`;
-    },
-
-    /**
      * Exporta todos los queries en un único archivo TXT
      */
     exportAllQueriesTXT() {
@@ -702,11 +686,13 @@ const ExportModule = {
         const filename = `reporte_completo_queries_${new Date().toISOString().split('T')[0]}.txt`;
         this.downloadFile(content, filename, 'text/plain');
         
-        UIModule.showNotification(
-            `Reporte completo descargado: ${filename}`,
-            'success',
-            4000
-        );
+        if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
+            UIModule.showNotification(
+                `Reporte completo descargado: ${filename}`,
+                'success',
+                4000
+            );
+        }
     },
 
     /**
@@ -735,7 +721,7 @@ const ExportModule = {
         const params = ParametersModule.getCurrentParameters();
         
         if (!queries || Object.keys(queries).length === 0) {
-            alert('No hay queries para exportar');
+            alert('No hay queries para exportar. Primero genera los queries en la pestaña correspondiente.');
             return;
         }
         
@@ -754,11 +740,15 @@ const ExportModule = {
         // Descargar
         XLSX.writeFile(wb, filename);
         
-        UIModule.showNotification(`Excel de cuadre generado: ${filename}`, 'success', 5000);
+        if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
+            UIModule.showNotification(`Excel de cuadre generado: ${filename}`, 'success', 5000);
+        }
     },
 
     /**
      * Crea hoja Universo
+     * @param {Object} wb - Workbook
+     * @param {string} queryUniverso - Query de universos
      */
     createUniversoSheet(wb, queryUniverso) {
         const lines = this.splitQueryIntoLogicalParts(queryUniverso, 'SELECT');
@@ -776,6 +766,8 @@ const ExportModule = {
 
     /**
      * Crea hoja Agrupado (la más compleja)
+     * @param {Object} wb - Workbook
+     * @param {string} queryAgrupado - Query agrupado
      */
     createAgrupadoSheet(wb, queryAgrupado) {
         const parts = this.splitComplexQuery(queryAgrupado);
@@ -794,6 +786,9 @@ const ExportModule = {
 
     /**
      * Crea hoja Minus
+     * @param {Object} wb - Workbook
+     * @param {string} queryMinus1 - Query MINUS 1
+     * @param {string} queryMinus2 - Query MINUS 2
      */
     createMinusSheet(wb, queryMinus1, queryMinus2) {
         const parts1 = this.splitComplexQuery(queryMinus1);
@@ -816,6 +811,8 @@ const ExportModule = {
 
     /**
      * Divide query complejo inteligentemente
+     * @param {string} query - Query a dividir
+     * @returns {Array<string>} - Partes del query
      */
     splitComplexQuery(query) {
         if (!query || query.length <= 30000) {
@@ -858,6 +855,9 @@ const ExportModule = {
 
     /**
      * Divide query en partes lógicas
+     * @param {string} query - Query a dividir
+     * @param {string} keyword - Palabra clave de referencia
+     * @returns {Array<string>} - Partes del query
      */
     splitQueryIntoLogicalParts(query, keyword) {
         if (!query) return [''];
@@ -880,134 +880,5 @@ const ExportModule = {
         }
         
         return parts.length > 0 ? parts : [query];
-    },
-
-    /**
-     * Exporta Excel específico para V3 - Formato Cuadre EDV
-     */
-    exportCuadreEDV() {
-        const queries = QueryModule.getGeneratedQueries();
-        const params = ParametersModule.getCurrentParameters();
-        
-        if (!queries || Object.keys(queries).length === 0) {
-            alert('No hay queries para exportar. Primero genera los queries en la pestaña correspondiente.');
-            return;
-        }
-        
-        // Generar nombre de archivo
-        const tableName = params.tablaDDV || 'TABLA';
-        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
-        const filename = `cuadre_${tableName.toUpperCase()}_${periods}.xlsx`;
-        
-        const wb = XLSX.utils.book_new();
-        
-        // Crear las 3 pestañas específicas
-        this.createUniversoSheet(wb, queries.universos);
-        this.createAgrupadoSheet(wb, queries.agrupados);
-        this.createMinusSheet(wb, queries.minus1, queries.minus2);
-        
-        // Descargar
-        XLSX.writeFile(wb, filename);
-        
-        UIModule.showNotification(`Excel de cuadre generado: ${filename}`, 'success', 5000);
-    },
-
-    /**
-     * Crea hoja Universo
-     */
-    createUniversoSheet(wb, queryUniverso) {
-        const lines = this.splitQueryIntoLogicalParts(queryUniverso, 'SELECT');
-        
-        const data = [
-            ['QUERY UNIVERSO - Compara número total de registros'],
-            [''],
-            ...lines.map((line, index) => [`Parte ${index + 1}`, line])
-        ];
-        
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        ws['!cols'] = [{ width: 15 }, { width: 100 }];
-        XLSX.utils.book_append_sheet(wb, ws, 'Universo');
-    },
-
-    /**
-     * Crea hoja Agrupado (la más compleja)
-     */
-    createAgrupadoSheet(wb, queryAgrupado) {
-        const parts = this.splitComplexQuery(queryAgrupado);
-        
-        const data = [
-            ['QUERY AGRUPADO - Compara métricas por campo'],
-            [''],
-            ['PARTE', 'CODIGO SQL'],
-            ...parts.map((part, index) => [`${index + 1}`, part])
-        ];
-        
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        ws['!cols'] = [{ width: 10 }, { width: 120 }];
-        XLSX.utils.book_append_sheet(wb, ws, 'Agrupado');
-    },
-
-    /**
-     * Crea hoja Minus
-     */
-    createMinusSheet(wb, queryMinus1, queryMinus2) {
-        const parts1 = this.splitComplexQuery(queryMinus1);
-        const parts2 = this.splitComplexQuery(queryMinus2);
-        
-        const data = [
-            ['QUERIES MINUS - Detecta diferencias'],
-            [''],
-            ['MINUS 1 (EDV - DDV)', ''],
-            ...parts1.map((part, index) => [`Parte ${index + 1}`, part]),
-            [''],
-            ['MINUS 2 (DDV - EDV)', ''],
-            ...parts2.map((part, index) => [`Parte ${index + 1}`, part])
-        ];
-        
-        const ws = XLSX.utils.aoa_to_sheet(data);
-        ws['!cols'] = [{ width: 20 }, { width: 100 }];
-        XLSX.utils.book_append_sheet(wb, ws, 'Minus');
-    },
-
-    /**
-     * Divide query complejo inteligentemente
-     */
-    splitComplexQuery(query) {
-        if (!query || query.length <= 30000) {
-            return [query];
-        }
-        
-        const parts = [];
-        const lines = query.split('\n');
-        let currentPart = '';
-        let fieldCount = 0;
-        
-        for (const line of lines) {
-            // Si es una línea con campos count() o sum()
-            if (line.includes('count(') || line.includes('sum(')) {
-                fieldCount++;
-                
-                // Cada 10 campos, hacer nueva parte
-                if (fieldCount % 10 === 0) {
-                    parts.push(currentPart + line);
-                    currentPart = '';
-                    continue;
-                }
-            }
-            
-            // Si agregar esta línea excede 30k, partir
-            if ((currentPart + '\n' + line).length > 30000 && currentPart.length > 0) {
-                parts.push(currentPart);
-                currentPart = line;
-            } else {
-                currentPart += (currentPart ? '\n' : '') + line;
-            }
-        }
-        
-        if (currentPart) {
-            parts.push(currentPart);
-        }
-        
-        return parts;
     }
 };
