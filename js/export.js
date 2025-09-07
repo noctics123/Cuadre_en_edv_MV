@@ -35,7 +35,7 @@ const ExportModule = {
     },
 
     /**
-     * Exporta usando template cargado
+     * Exporta usando template cargado con soporte para múltiples pestañas
      */
     async exportWithTemplate(queries, params) {
         const ExcelJS = await this.loadExcelJS();
@@ -44,12 +44,6 @@ const ExportModule = {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(this.templateBuffer);
         
-        // Buscar la pestaña "Cuadre"
-        const worksheet = workbook.getWorksheet('Cuadre') || workbook.worksheets[0];
-        if (!worksheet) {
-            throw new Error('No se encontró la pestaña "Cuadre" en el template');
-        }
-
         // Preparar datos para inserción
         const data = {
             sqlUniv: queries.universos,
@@ -60,8 +54,70 @@ const ExportModule = {
             tablaMinus: this.generateMinusTable(params)
         };
 
-        // Insertar contenido usando nombres definidos o fallback
-        await this.insertContentIntoTemplate(worksheet, data);
+        // Procesar cada pestaña del template
+        const processedSheets = [];
+        
+        for (const worksheet of workbook.worksheets) {
+            const sheetName = worksheet.name.toLowerCase();
+            
+            // Determinar qué datos insertar según el nombre de la pestaña
+            let sheetData = {};
+            
+            if (sheetName.includes('universo') || sheetName.includes('universos')) {
+                sheetData = {
+                    sql: data.sqlUniv,
+                    tabla: data.tablaUniv,
+                    tipo: 'universos'
+                };
+            } else if (sheetName.includes('agrupado') || sheetName.includes('agrupados')) {
+                sheetData = {
+                    sql: data.sqlAgr,
+                    tabla: data.tablaAgr,
+                    tipo: 'agrupados'
+                };
+            } else if (sheetName.includes('minus')) {
+                sheetData = {
+                    sql: data.sqlMinus,
+                    tabla: data.tablaMinus,
+                    tipo: 'minus'
+                };
+            } else if (sheetName.includes('cuadre') || sheetName.includes('resumen')) {
+                // Pestaña principal con todos los datos
+                sheetData = {
+                    sqlUniv: data.sqlUniv,
+                    sqlAgr: data.sqlAgr,
+                    sqlMinus: data.sqlMinus,
+                    tablaUniv: data.tablaUniv,
+                    tablaAgr: data.tablaAgr,
+                    tablaMinus: data.tablaMinus,
+                    tipo: 'completo'
+                };
+            } else {
+                // Pestaña genérica - intentar insertar todos los datos
+                sheetData = {
+                    sqlUniv: data.sqlUniv,
+                    sqlAgr: data.sqlAgr,
+                    sqlMinus: data.sqlMinus,
+                    tablaUniv: data.tablaUniv,
+                    tablaAgr: data.tablaAgr,
+                    tablaMinus: data.tablaMinus,
+                    tipo: 'completo'
+                };
+            }
+
+            // Insertar contenido en la pestaña
+            try {
+                await this.insertContentIntoTemplate(worksheet, sheetData);
+                processedSheets.push(worksheet.name);
+                console.log(`✅ Procesada pestaña: ${worksheet.name} (${sheetData.tipo})`);
+            } catch (error) {
+                console.warn(`⚠️ Error procesando pestaña ${worksheet.name}:`, error.message);
+            }
+        }
+
+        if (processedSheets.length === 0) {
+            throw new Error('No se pudo procesar ninguna pestaña del template');
+        }
 
         // Generar archivo y descargar
         const filename = this.generateTemplateFilename(params);
@@ -69,7 +125,11 @@ const ExportModule = {
         this.downloadExcelBuffer(buffer, filename);
 
         if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
-            UIModule.showNotification(`Excel generado con template: ${filename}`, 'success', 5000);
+            UIModule.showNotification(
+                `Excel generado con template: ${filename} (${processedSheets.length} pestañas procesadas)`, 
+                'success', 
+                5000
+            );
         }
     },
 
@@ -112,7 +172,7 @@ const ExportModule = {
     },
 
     /**
-     * Cargar template Excel
+     * Cargar template Excel con validación mejorada
      */
     async loadTemplate() {
         try {
@@ -129,17 +189,52 @@ const ExportModule = {
                     }
 
                     try {
-                        const arrayBuffer = await file.arrayBuffer();
-                        this.templateBuffer = arrayBuffer;
-                        
-                        await this.validateTemplate();
-                        
+                        // Mostrar loading
                         const templateInfo = document.getElementById('templateInfo');
                         if (templateInfo) {
                             templateInfo.innerHTML = `
+                                <div class="template-loading">
+                                    <div class="spinner"></div>
+                                    Cargando y validando template...
+                                </div>
+                            `;
+                        }
+
+                        const arrayBuffer = await file.arrayBuffer();
+                        this.templateBuffer = arrayBuffer;
+                        
+                        // Validar template
+                        const validationResult = await this.validateTemplate();
+                        
+                        // Mostrar información del template
+                        if (templateInfo) {
+                            templateInfo.innerHTML = `
                                 <div class="template-loaded">
-                                    ✅ Template cargado: <strong>${file.name}</strong>
-                                    <br><small>Listo para generar Excel con formato personalizado</small>
+                                    <div class="template-header">
+                                        <span class="template-icon">📊</span>
+                                        <div class="template-details">
+                                            <strong>${file.name}</strong>
+                                            <small>${(file.size / 1024).toFixed(1)} KB</small>
+                                        </div>
+                                    </div>
+                                    <div class="template-info">
+                                        <div class="info-item">
+                                            <span class="label">Pestañas encontradas:</span>
+                                            <span class="value">${validationResult.sheets.join(', ')}</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="label">Anclas detectadas:</span>
+                                            <span class="value">${validationResult.anchors} nombres definidos</span>
+                                        </div>
+                                        <div class="info-item">
+                                            <span class="label">Placeholders:</span>
+                                            <span class="value">${validationResult.placeholders} encontrados</span>
+                                        </div>
+                                    </div>
+                                    <div class="template-actions">
+                                        <button class="btn btn-sm" onclick="ExportModule.previewTemplate()">👁️ Vista Previa</button>
+                                        <button class="btn btn-sm btn-secondary" onclick="ExportModule.clearTemplate()">🗑️ Limpiar</button>
+                                    </div>
                                 </div>
                             `;
                         }
@@ -147,6 +242,14 @@ const ExportModule = {
                         resolve(file.name);
                         
                     } catch (error) {
+                        if (templateInfo) {
+                            templateInfo.innerHTML = `
+                                <div class="template-error">
+                                    ❌ Error cargando template: ${error.message}
+                                    <br><small>Verifica que el archivo tenga la estructura correcta</small>
+                                </div>
+                            `;
+                        }
                         reject(error);
                     }
                 };
@@ -167,9 +270,33 @@ const ExportModule = {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(this.templateBuffer);
         
-        const worksheet = workbook.getWorksheet('Cuadre');
+        const validationResult = {
+            sheets: [],
+            anchors: 0,
+            placeholders: 0,
+            isValid: false,
+            errors: []
+        };
+
+        // Obtener lista de pestañas
+        workbook.worksheets.forEach(ws => {
+            validationResult.sheets.push(ws.name);
+        });
+
+        // Buscar pestaña principal (Cuadre, Universo, Agrupados, Minus)
+        const mainSheets = ['Cuadre', 'Universo', 'Agrupados', 'Minus'];
+        const foundMainSheet = validationResult.sheets.find(sheet => 
+            mainSheets.some(main => sheet.toLowerCase().includes(main.toLowerCase()))
+        );
+
+        if (!foundMainSheet) {
+            validationResult.errors.push('No se encontró pestaña principal (Cuadre, Universo, Agrupados, o Minus)');
+        }
+
+        const worksheet = workbook.getWorksheet(foundMainSheet) || workbook.worksheets[0];
         if (!worksheet) {
-            throw new Error('El template debe tener una pestaña llamada "Cuadre"');
+            validationResult.errors.push('No se pudo acceder a ninguna pestaña del template');
+            return validationResult;
         }
 
         const requiredAnchors = [
@@ -178,44 +305,48 @@ const ExportModule = {
             'ANCHOR_MINUS_SQL', 'ANCHOR_MINUS_TABLA'
         ];
 
-        let foundAnchors = 0;
-        let foundPlaceholders = 0;
-
         // Verificar nombres definidos
         if (workbook.definedNames) {
             requiredAnchors.forEach(anchor => {
                 if (workbook.definedNames.get(anchor)) {
-                    foundAnchors++;
+                    validationResult.anchors++;
                 }
             });
         }
 
-        // Verificar placeholders si no hay nombres definidos
-        if (foundAnchors === 0) {
-            const placeholders = [
-                '<<UNIVERSOS_SQL>>', '<<UNIVERSOS_TABLA>>',
-                '<<AGRUPADOS_SQL>>', '<<AGRUPADOS_TABLA>>',
-                '<<MINUS_SQL>>', '<<MINUS_TABLA>>'
-            ];
+        // Verificar placeholders
+        const placeholders = [
+            '<<UNIVERSOS_SQL>>', '<<UNIVERSOS_TABLA>>',
+            '<<AGRUPADOS_SQL>>', '<<AGRUPADOS_TABLA>>',
+            '<<MINUS_SQL>>', '<<MINUS_TABLA>>',
+            // Placeholders alternativos
+            '{{UNIVERSOS_SQL}}', '{{UNIVERSOS_TABLA}}',
+            '{{AGRUPADOS_SQL}}', '{{AGRUPADOS_TABLA}}',
+            '{{MINUS_SQL}}', '{{MINUS_TABLA}}'
+        ];
 
-            worksheet.eachRow((row, rowNumber) => {
-                row.eachCell((cell, colNumber) => {
-                    if (cell.value && typeof cell.value === 'string') {
-                        placeholders.forEach(placeholder => {
-                            if (cell.value.includes(placeholder)) {
-                                foundPlaceholders++;
-                            }
-                        });
-                    }
-                });
+        worksheet.eachRow((row, rowNumber) => {
+            row.eachCell((cell, colNumber) => {
+                if (cell.value && typeof cell.value === 'string') {
+                    placeholders.forEach(placeholder => {
+                        if (cell.value.includes(placeholder)) {
+                            validationResult.placeholders++;
+                        }
+                    });
+                }
             });
+        });
+
+        // Validar que tenga al menos una forma de inserción
+        if (validationResult.anchors === 0 && validationResult.placeholders === 0) {
+            validationResult.errors.push('No se encontraron nombres definidos ni placeholders esperados');
         }
 
-        if (foundAnchors === 0 && foundPlaceholders === 0) {
-            throw new Error('Template inválido: No se encontraron nombres definidos ni placeholders esperados');
-        }
+        validationResult.isValid = validationResult.errors.length === 0;
 
-        console.log(`Template validado: ${foundAnchors} nombres definidos, ${foundPlaceholders} placeholders encontrados`);
+        console.log(`Template validado: ${validationResult.anchors} nombres definidos, ${validationResult.placeholders} placeholders encontrados`);
+        
+        return validationResult;
     },
 
     /**
@@ -224,18 +355,72 @@ const ExportModule = {
     async insertContentIntoTemplate(worksheet, data) {
         const workbook = worksheet.workbook;
 
+        // Determinar el tipo de inserción basado en los datos disponibles
+        if (data.tipo === 'universos') {
+            await this.insertSingleTypeContent(worksheet, workbook, data, 'UNIV');
+        } else if (data.tipo === 'agrupados') {
+            await this.insertSingleTypeContent(worksheet, workbook, data, 'AGR');
+        } else if (data.tipo === 'minus') {
+            await this.insertSingleTypeContent(worksheet, workbook, data, 'MINUS');
+        } else {
+            // Inserción completa con todos los tipos
+            await this.insertCompleteContent(worksheet, workbook, data);
+        }
+    },
+
+    /**
+     * Inserta contenido de un solo tipo (universos, agrupados, o minus)
+     */
+    async insertSingleTypeContent(worksheet, workbook, data, type) {
         const contentMap = [
-            { anchor: 'ANCHOR_UNIV_SQL', placeholder: '<<UNIVERSOS_SQL>>', content: data.sqlUniv, type: 'sql' },
-            { anchor: 'ANCHOR_UNIV_TABLA', placeholder: '<<UNIVERSOS_TABLA>>', content: data.tablaUniv, type: 'table' },
-            { anchor: 'ANCHOR_AGR_SQL', placeholder: '<<AGRUPADOS_SQL>>', content: data.sqlAgr, type: 'sql' },
-            { anchor: 'ANCHOR_AGR_TABLA', placeholder: '<<AGRUPADOS_TABLA>>', content: data.tablaAgr, type: 'table' },
-            { anchor: 'ANCHOR_MINUS_SQL', placeholder: '<<MINUS_SQL>>', content: data.sqlMinus, type: 'sql' },
-            { anchor: 'ANCHOR_MINUS_TABLA', placeholder: '<<MINUS_TABLA>>', content: data.tablaMinus, type: 'table' }
+            { 
+                anchor: `ANCHOR_${type}_SQL`, 
+                placeholder: `<<${type}_SQL>>`, 
+                altPlaceholder: `{{${type}_SQL}}`,
+                content: data.sql, 
+                type: 'sql' 
+            },
+            { 
+                anchor: `ANCHOR_${type}_TABLA`, 
+                placeholder: `<<${type}_TABLA>>`, 
+                altPlaceholder: `{{${type}_TABLA}}`,
+                content: data.tabla, 
+                type: 'table' 
+            }
         ];
 
         for (const item of contentMap) {
             try {
-                const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder);
+                const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder, item.altPlaceholder);
+                if (position) {
+                    if (item.type === 'sql') {
+                        await this.insertSQLContent(worksheet, position, item.content);
+                    } else if (item.type === 'table') {
+                        await this.insertTableContent(worksheet, position, item.content);
+                    }
+                }
+            } catch (error) {
+                console.warn(`No se pudo insertar ${item.anchor}:`, error.message);
+            }
+        }
+    },
+
+    /**
+     * Inserta contenido completo con todos los tipos
+     */
+    async insertCompleteContent(worksheet, workbook, data) {
+        const contentMap = [
+            { anchor: 'ANCHOR_UNIV_SQL', placeholder: '<<UNIVERSOS_SQL>>', altPlaceholder: '{{UNIVERSOS_SQL}}', content: data.sqlUniv, type: 'sql' },
+            { anchor: 'ANCHOR_UNIV_TABLA', placeholder: '<<UNIVERSOS_TABLA>>', altPlaceholder: '{{UNIVERSOS_TABLA}}', content: data.tablaUniv, type: 'table' },
+            { anchor: 'ANCHOR_AGR_SQL', placeholder: '<<AGRUPADOS_SQL>>', altPlaceholder: '{{AGRUPADOS_SQL}}', content: data.sqlAgr, type: 'sql' },
+            { anchor: 'ANCHOR_AGR_TABLA', placeholder: '<<AGRUPADOS_TABLA>>', altPlaceholder: '{{AGRUPADOS_TABLA}}', content: data.tablaAgr, type: 'table' },
+            { anchor: 'ANCHOR_MINUS_SQL', placeholder: '<<MINUS_SQL>>', altPlaceholder: '{{MINUS_SQL}}', content: data.sqlMinus, type: 'sql' },
+            { anchor: 'ANCHOR_MINUS_TABLA', placeholder: '<<MINUS_TABLA>>', altPlaceholder: '{{MINUS_TABLA}}', content: data.tablaMinus, type: 'table' }
+        ];
+
+        for (const item of contentMap) {
+            try {
+                const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder, item.altPlaceholder);
                 if (position) {
                     if (item.type === 'sql') {
                         await this.insertSQLContent(worksheet, position, item.content);
@@ -252,7 +437,7 @@ const ExportModule = {
     /**
      * Encuentra la posición donde insertar contenido
      */
-    findContentPosition(workbook, worksheet, anchorName, placeholder) {
+    findContentPosition(workbook, worksheet, anchorName, placeholder, altPlaceholder = null) {
         // Intentar nombre definido primero
         if (workbook.definedNames) {
             const definedName = workbook.definedNames.get(anchorName);
@@ -268,11 +453,21 @@ const ExportModule = {
 
         // Fallback: buscar placeholder
         let position = null;
+        const placeholders = [placeholder];
+        if (altPlaceholder) {
+            placeholders.push(altPlaceholder);
+        }
+
         worksheet.eachRow((row, rowNumber) => {
             row.eachCell((cell, colNumber) => {
-                if (cell.value && typeof cell.value === 'string' && cell.value.includes(placeholder)) {
-                    position = { row: rowNumber, col: colNumber };
-                    cell.value = cell.value.replace(placeholder, '').trim() || null;
+                if (cell.value && typeof cell.value === 'string') {
+                    for (const ph of placeholders) {
+                        if (cell.value.includes(ph)) {
+                            position = { row: rowNumber, col: colNumber };
+                            cell.value = cell.value.replace(ph, '').trim() || null;
+                            return; // Salir del bucle una vez encontrado
+                        }
+                    }
                 }
             });
         });
@@ -594,6 +789,86 @@ const ExportModule = {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
+    },
+
+    /**
+     * Vista previa del template cargado
+     */
+    async previewTemplate() {
+        if (!this.templateBuffer) {
+            alert('No hay template cargado');
+            return;
+        }
+
+        try {
+            const ExcelJS = await this.loadExcelJS();
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(this.templateBuffer);
+            
+            let previewHTML = '<div class="template-preview">';
+            previewHTML += '<h4>📊 Vista Previa del Template</h4>';
+            
+            workbook.worksheets.forEach((worksheet, index) => {
+                previewHTML += `<div class="sheet-preview">`;
+                previewHTML += `<h5>📋 ${worksheet.name}</h5>`;
+                previewHTML += `<div class="sheet-info">`;
+                previewHTML += `<p><strong>Dimensiones:</strong> ${worksheet.rowCount} filas x ${worksheet.columnCount} columnas</p>`;
+                
+                // Mostrar primeras filas
+                previewHTML += `<div class="sheet-sample">`;
+                previewHTML += `<h6>Primeras 5 filas:</h6>`;
+                previewHTML += `<table class="preview-table">`;
+                
+                for (let row = 1; row <= Math.min(5, worksheet.rowCount); row++) {
+                    previewHTML += `<tr>`;
+                    for (let col = 1; col <= Math.min(10, worksheet.columnCount); col++) {
+                        const cell = worksheet.getCell(row, col);
+                        const value = cell.value || '';
+                        previewHTML += `<td>${value}</td>`;
+                    }
+                    previewHTML += `</tr>`;
+                }
+                
+                previewHTML += `</table>`;
+                previewHTML += `</div>`;
+                previewHTML += `</div>`;
+                previewHTML += `</div>`;
+            });
+            
+            previewHTML += '</div>';
+            
+            if (typeof UIModule !== 'undefined' && UIModule.showModal) {
+                UIModule.showModal('Vista Previa del Template', previewHTML);
+            } else {
+                alert('Vista previa no disponible');
+            }
+            
+        } catch (error) {
+            alert('Error generando vista previa: ' + error.message);
+        }
+    },
+
+    /**
+     * Limpia el template cargado
+     */
+    clearTemplate() {
+        this.templateBuffer = null;
+        this.templateWorkbook = null;
+        
+        const templateInfo = document.getElementById('templateInfo');
+        if (templateInfo) {
+            templateInfo.innerHTML = `
+                <div class="template-empty">
+                    <span class="template-icon">📂</span>
+                    <p>No hay template cargado</p>
+                    <small>Haz clic en "Cargar Template" para seleccionar un archivo Excel</small>
+                </div>
+            `;
+        }
+        
+        if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
+            UIModule.showNotification('Template eliminado', 'info', 2000);
+        }
     },
 
     // =============================================================================
