@@ -58,7 +58,85 @@ function parseRenameRules(rulesText) {
     return rules;
 }
 
-// FUNCIONES DEL REPOSITORIO
+// FUNCIONES MEJORADAS PARA DETECCIÓN AUTOMÁTICA
+
+// Detectar CREATE TABLE automáticamente en el texto
+function detectCreateTable() {
+    const text = document.getElementById('createTableInput').value.trim();
+    
+    if (!text) {
+        alert('Por favor, pega algún contenido en el área de texto');
+        return;
+    }
+    
+    // Buscar CREATE TABLE en el texto
+    const createTableMatches = extractMultipleCreateTables(text);
+    
+    if (createTableMatches.length === 0) {
+        alert('No se encontró ningún CREATE TABLE en el texto pegado');
+        return;
+    }
+    
+    if (createTableMatches.length === 1) {
+        // Si hay solo uno, usarlo directamente
+        document.getElementById('createTableInput').value = createTableMatches[0];
+        parseCreateTable();
+        
+        // Auto-llenar esquemas si es posible
+        const tableName = extractTableName(createTableMatches[0]);
+        const schema = extractSchemaName(createTableMatches[0]);
+        autoFillSchemas(tableName, schema);
+        
+        alert(`CREATE TABLE detectado: ${tableName}`);
+    } else {
+        // Si hay múltiples, mostrar opciones
+        showMultipleCreateTableOptions(createTableMatches);
+    }
+}
+
+// Mostrar opciones cuando hay múltiples CREATE TABLE
+function showMultipleCreateTableOptions(createTables) {
+    let options = 'Se encontraron múltiples CREATE TABLE:\n\n';
+    createTables.forEach((create, index) => {
+        const tableName = extractTableName(create);
+        options += `${index + 1}. ${tableName}\n`;
+    });
+    options += '\n¿Cuál quieres usar? (Introduce el número)';
+    
+    const choice = prompt(options);
+    const index = parseInt(choice) - 1;
+    
+    if (index >= 0 && index < createTables.length) {
+        document.getElementById('createTableInput').value = createTables[index];
+        parseCreateTable();
+        
+        const tableName = extractTableName(createTables[index]);
+        const schema = extractSchemaName(createTables[index]);
+        autoFillSchemas(tableName, schema);
+        
+        alert(`CREATE TABLE seleccionado: ${tableName}`);
+    }
+}
+
+// Auto-llenar esquemas basado en la tabla detectada
+function autoFillSchemas(tableName, schema) {
+    if (schema && tableName) {
+        // Si es un esquema DDV, auto-completar
+        if (schema.includes('ddv') || schema.includes('matrizvariables')) {
+            document.getElementById('esquemaDDV').value = schema;
+            document.getElementById('tablaDDV').value = tableName;
+            
+            // Sugerir esquema EDV
+            const edvSchema = schema.replace('ddv', 'edv').replace('matrizvariables', 'trdata_012');
+            document.getElementById('esquemaEDV').value = edvSchema;
+            document.getElementById('tablaEDV').value = tableName + '_ruben';
+        }
+        
+        alert(`Esquemas auto-completados:\nDDV: ${schema}\nTabla: ${tableName}`);
+    }
+}
+
+// FUNCIONES DEL REPOSITORIO MEJORADAS
 
 // Actualizar selector de tablas
 function updateTableSelector() {
@@ -121,7 +199,7 @@ function filterTables() {
     });
 }
 
-// Guardar tabla en repositorio
+// Guardar tabla en repositorio - VERSIÓN MEJORADA
 function saveToRepository() {
     const createStatement = document.getElementById('createTableInput').value.trim();
     
@@ -135,7 +213,7 @@ function saveToRepository() {
         const schema = extractSchemaName(createStatement);
         
         if (!tableName) {
-            throw new Error('No se pudo extraer el nombre de la tabla');
+            throw new Error('No se pudo extraer el nombre de la tabla del CREATE TABLE');
         }
         
         const tableKey = tableName;
@@ -161,23 +239,57 @@ function saveToRepository() {
         updateRepositoryStats();
         loadRepositoryList();
         
-        alert(`Tabla "${tableName}" guardada en el repositorio`);
+        alert(`Tabla "${tableName}" guardada en el repositorio\nEsquema: ${schema}`);
         
     } catch (error) {
-        alert('Error al guardar: ' + error.message);
+        alert('Error al guardar en repositorio: ' + error.message);
+        console.error('Error completo:', error);
     }
 }
 
-// Extraer nombre de tabla del CREATE TABLE
+// Extraer nombre de tabla del CREATE TABLE - VERSIÓN MEJORADA
 function extractTableName(createStatement) {
-    const match = createStatement.match(/CREATE\s+TABLE\s+(?:\w+\.)*(\w+)/i);
-    return match ? match[1] : null;
+    // Patterns más robustos para diferentes formatos
+    const patterns = [
+        /CREATE\s+TABLE\s+(?:\w+\.)*(\w+)\s*\(/i,  // Standard
+        /CREATE\s+TABLE\s+[\w.]+\.(\w+)\s*\(/i,    // Con esquema completo
+        /CREATE\s+TABLE\s+(\w+)\s*\(/i             // Solo nombre tabla
+    ];
+    
+    for (const pattern of patterns) {
+        const match = createStatement.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
+    // Último intento: buscar cualquier palabra después de CREATE TABLE
+    const generalMatch = createStatement.match(/CREATE\s+TABLE\s+([^\s\(]+)/i);
+    if (generalMatch) {
+        const fullName = generalMatch[1];
+        // Si tiene puntos, tomar la última parte
+        const parts = fullName.split('.');
+        return parts[parts.length - 1];
+    }
+    
+    return null;
 }
 
-// Extraer esquema del CREATE TABLE
+// Extraer esquema del CREATE TABLE - VERSIÓN MEJORADA
 function extractSchemaName(createStatement) {
-    const match = createStatement.match(/CREATE\s+TABLE\s+([\w.]+)\.\w+/i);
-    return match ? match[1] : 'unknown_schema';
+    const patterns = [
+        /CREATE\s+TABLE\s+([\w.]+)\.\w+\s*\(/i,     // Schema.table
+        /CREATE\s+TABLE\s+([\w.]+\.\w+)\.\w+\s*\(/i // Schema.database.table
+    ];
+    
+    for (const pattern of patterns) {
+        const match = createStatement.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
+    return 'unknown_schema';
 }
 
 // Mostrar gestor de repositorio
@@ -326,7 +438,7 @@ function importFromFile() {
     document.getElementById('fileImport').click();
 }
 
-// Manejar importación de archivo
+// Manejar importación de archivo - VERSIÓN MEJORADA
 function handleFileImport(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -342,6 +454,8 @@ function handleFileImport(event) {
         }
         
         let imported = 0;
+        let errors = 0;
+        
         tables.forEach(createStatement => {
             try {
                 const tableName = extractTableName(createStatement);
@@ -356,9 +470,12 @@ function handleFileImport(event) {
                         columns: 0 // Se calculará al parsear
                     };
                     imported++;
+                } else {
+                    errors++;
                 }
             } catch (error) {
                 console.log('Error procesando tabla:', error);
+                errors++;
             }
         });
         
@@ -367,16 +484,34 @@ function handleFileImport(event) {
         updateRepositoryStats();
         loadRepositoryList();
         
-        alert(`${imported} tablas importadas al repositorio`);
+        alert(`Importación completada:\n✅ ${imported} tablas importadas\n❌ ${errors} errores`);
     };
     
     reader.readAsText(file);
 }
 
-// Extraer múltiples CREATE TABLE de un archivo
+// Extraer múltiples CREATE TABLE de un archivo - VERSIÓN MEJORADA
 function extractMultipleCreateTables(content) {
-    const createTableRegex = /CREATE\s+TABLE\s+[^;]+;/gi;
-    return content.match(createTableRegex) || [];
+    // Regex más flexible que funciona con o sin punto y coma
+    const patterns = [
+        /CREATE\s+TABLE\s+[\s\S]*?(?=CREATE\s+TABLE|$)/gi,  // Hasta el siguiente CREATE TABLE o final
+        /CREATE\s+TABLE\s+[^;]+;/gi,                         // Con punto y coma
+        /CREATE\s+TABLE\s+[\s\S]*?TBLPROPERTIES[\s\S]*?\)/gi // Con TBLPROPERTIES
+    ];
+    
+    let allMatches = [];
+    
+    for (const pattern of patterns) {
+        const matches = content.match(pattern) || [];
+        allMatches = allMatches.concat(matches);
+    }
+    
+    // Eliminar duplicados y filtrar válidos
+    const uniqueMatches = [...new Set(allMatches)];
+    return uniqueMatches.filter(match => {
+        // Verificar que realmente contenga una definición de tabla válida
+        return match.includes('(') && extractTableName(match) !== null;
+    });
 }
 
 // Exportar repositorio
