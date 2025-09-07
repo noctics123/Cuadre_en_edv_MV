@@ -4,218 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Generador de Queries de Ratificación v2</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f7fa;
-        }
-        
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        
-        .header h1 {
-            margin: 0;
-            font-size: 2.2em;
-        }
-        
-        .header p {
-            margin: 10px 0 0 0;
-            opacity: 0.9;
-        }
-        
-        .tabs {
-            display: flex;
-            background: #f8f9fa;
-            border-bottom: 1px solid #dee2e6;
-        }
-        
-        .tab {
-            padding: 15px 25px;
-            cursor: pointer;
-            border-bottom: 3px solid transparent;
-            transition: all 0.3s;
-        }
-        
-        .tab.active {
-            background: white;
-            border-bottom-color: #667eea;
-            color: #667eea;
-            font-weight: bold;
-        }
-        
-        .tab:hover {
-            background: #e9ecef;
-        }
-        
-        .tab-content {
-            display: none;
-            padding: 30px;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        label {
-            display: block;
-            font-weight: bold;
-            margin-bottom: 8px;
-            color: #495057;
-        }
-        
-        input, textarea, select {
-            width: 100%;
-            padding: 12px;
-            border: 2px solid #e9ecef;
-            border-radius: 6px;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-        
-        input:focus, textarea:focus, select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-        
-        textarea {
-            height: 200px;
-            font-family: 'Courier New', monospace;
-            resize: vertical;
-        }
-        
-        .row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        
-        .btn {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background 0.3s;
-        }
-        
-        .btn:hover {
-            background: #5a6fd8;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-        }
-        
-        .btn-secondary:hover {
-            background: #5a6268;
-        }
-        
-        .btn-success {
-            background: #28a745;
-        }
-        
-        .btn-success:hover {
-            background: #218838;
-        }
-        
-        .output-section {
-            margin-top: 30px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-        }
-        
-        .query-output {
-            background: #2d3748;
-            color: #e2e8f0;
-            padding: 20px;
-            border-radius: 6px;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            white-space: pre-wrap;
-            max-height: 400px;
-            overflow-y: auto;
-            margin-bottom: 15px;
-        }
-        
-        .field-mapping {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 6px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .field-row {
-            display: grid;
-            grid-template-columns: 2fr 2fr 1fr 80px;
-            gap: 10px;
-            align-items: center;
-            padding: 8px 0;
-            border-bottom: 1px solid #e9ecef;
-        }
-        
-        .field-row:last-child {
-            border-bottom: none;
-        }
-        
-        .field-header {
-            font-weight: bold;
-            background: #e9ecef;
-            padding: 10px;
-            border-radius: 4px;
-        }
-        
-        .rename-input {
-            font-size: 12px;
-            padding: 6px;
-        }
-        
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        
-        .stat-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 8px;
-            text-align: center;
-        }
-        
-        .stat-number {
-            font-size: 2em;
-            font-weight: bold;
-        }
-        
-        .stat-label {
-            opacity: 0.9;
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
@@ -228,7 +17,8 @@
             <div class="tab active" onclick="switchTab('parametros')">1. Parámetros</div>
             <div class="tab" onclick="switchTab('describe')">2. Describe Tabla</div>
             <div class="tab" onclick="switchTab('queries')">3. Queries Generados</div>
-            <div class="tab" onclick="switchTab('export')">4. Exportar Excel</div>
+            <div class="tab" onclick="switchTab('repositorio')">4. Repositorio</div>
+            <div class="tab" onclick="switchTab('export')">5. Exportar Excel</div>
         </div>
         
         <!-- TAB 1: PARÁMETROS -->
@@ -274,12 +64,29 @@
         <div id="describe" class="tab-content">
             <h3>Estructura de la Tabla</h3>
             
-            <div class="form-group">
-                <label>CREATE TABLE Statement</label>
-                <textarea id="createTableInput" placeholder="Pega aquí tu CREATE TABLE..."></textarea>
+            <div class="row">
+                <div class="form-group">
+                    <label>Seleccionar tabla del repositorio</label>
+                    <select id="tableSelector" onchange="loadTableFromRepo()">
+                        <option value="">-- Seleccionar tabla existente --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Buscar tabla</label>
+                    <input type="text" id="tableSearch" placeholder="Buscar por nombre..." oninput="filterTables()">
+                </div>
             </div>
             
-            <button class="btn" onclick="parseCreateTable()">Analizar Estructura</button>
+            <div class="form-group">
+                <label>CREATE TABLE Statement</label>
+                <textarea id="createTableInput" placeholder="Pega aquí tu CREATE TABLE o selecciona una tabla del repositorio..."></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button class="btn" onclick="parseCreateTable()">Analizar Estructura</button>
+                <button class="btn btn-secondary" onclick="saveToRepository()">Guardar en Repositorio</button>
+                <button class="btn btn-secondary" onclick="showRepositoryManager()">Gestionar Repositorio</button>
+            </div>
             
             <div id="fieldMapping" style="display: none;">
                 <h4>Campos Detectados y Mapeo</h4>
@@ -306,7 +113,37 @@
             <div id="queryOutputs"></div>
         </div>
         
-        <!-- TAB 4: EXPORTAR EXCEL -->
+        <!-- TAB 4: REPOSITORIO -->
+        <div id="repositorio" class="tab-content">
+            <h3>Repositorio de CREATE TABLEs</h3>
+            
+            <div class="stats" id="repoStats"></div>
+            
+            <div class="row">
+                <div class="form-group">
+                    <label>Filtrar por esquema</label>
+                    <select id="schemaFilter" onchange="filterRepository()">
+                        <option value="">Todos los esquemas</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Buscar tabla</label>
+                    <input type="text" id="repoSearch" placeholder="Buscar tabla..." oninput="filterRepository()">
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <button class="btn" onclick="importFromFile()">Importar CREATE TABLEs</button>
+                <button class="btn btn-secondary" onclick="exportRepository()">Exportar Repositorio</button>
+                <button class="btn btn-secondary" onclick="clearRepository()">Limpiar Todo</button>
+            </div>
+            
+            <div id="repositoryList"></div>
+            
+            <input type="file" id="fileImport" style="display: none" accept=".sql,.txt" onchange="handleFileImport(event)">
+        </div>
+        
+        <!-- TAB 5: EXPORTAR EXCEL -->
         <div id="export" class="tab-content">
             <h3>Exportar a Excel</h3>
             
@@ -324,370 +161,16 @@
         </div>
     </div>
 
+    <!-- Modal para vista completa -->
+    <div id="tableModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h3 id="modalTitle"></h3>
+            <div id="modalContent" style="font-family: 'Courier New', monospace; background: #f8f9fa; padding: 15px; border-radius: 4px; white-space: pre-wrap;"></div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script>
-        // Variables globales
-        let tableStructure = [];
-        let parameters = {};
-        let generatedQueries = {};
-        
-        // Cambio de tabs
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
-        }
-        
-        // Guardar parámetros
-        function saveParameters() {
-            parameters = {
-                esquemaDDV: document.getElementById('esquemaDDV').value,
-                tablaDDV: document.getElementById('tablaDDV').value,
-                esquemaEDV: document.getElementById('esquemaEDV').value,
-                tablaEDV: document.getElementById('tablaEDV').value,
-                periodos: document.getElementById('periodos').value,
-                renameRules: parseRenameRules(document.getElementById('renameRules').value)
-            };
-            
-            alert('Parámetros guardados correctamente');
-            switchTab('describe');
-        }
-        
-        // Parsear reglas de renombrado
-        function parseRenameRules(rulesText) {
-            const rules = {};
-            rulesText.split('\n').forEach(line => {
-                const [original, renamed] = line.split(':').map(s => s.trim());
-                if (original && renamed) {
-                    rules[original] = renamed;
-                }
-            });
-            return rules;
-        }
-        
-        // Parsear CREATE TABLE
-        function parseCreateTable() {
-            const createTableText = document.getElementById('createTableInput').value;
-            
-            if (!createTableText.trim()) {
-                alert('Por favor, pega un CREATE TABLE statement');
-                return;
-            }
-            
-            try {
-                tableStructure = extractTableStructure(createTableText);
-                displayFieldMapping();
-                document.getElementById('fieldMapping').style.display = 'block';
-            } catch (error) {
-                alert('Error al analizar la tabla: ' + error.message);
-            }
-        }
-        
-        // Extraer estructura de tabla
-        function extractTableStructure(sql) {
-            const cleanSql = sql.replace(/\s+/g, ' ').trim();
-            const tableMatch = cleanSql.match(/CREATE\s+TABLE\s+[^\(]+\(\s*(.*?)\s*\)\s*(?:USING|PARTITIONED|LOCATION|TBLPROPERTIES|$)/i);
-            
-            if (!tableMatch) {
-                throw new Error('No se pudo encontrar la definición de columnas');
-            }
-            
-            const columnsText = tableMatch[1];
-            const columns = [];
-            const columnDefinitions = splitByComma(columnsText);
-            
-            for (let colDef of columnDefinitions) {
-                colDef = colDef.trim();
-                if (!colDef) continue;
-                
-                const parts = colDef.split(/\s+/);
-                if (parts.length >= 2) {
-                    const columnName = parts[0];
-                    let dataType = parts[1];
-                    
-                    // Incluir paréntesis si existen
-                    if (parts.length > 2 && parts[2].startsWith('(')) {
-                        let parenContent = '';
-                        for (let i = 2; i < parts.length; i++) {
-                            parenContent += parts[i];
-                            if (parts[i].includes(')')) break;
-                        }
-                        dataType += parenContent;
-                    }
-                    
-                    // Determinar función (count o sum)
-                    const aggregateFunction = getAggregateFunction(dataType);
-                    
-                    columns.push({
-                        columnName,
-                        dataType,
-                        aggregateFunction,
-                        edvName: parameters.renameRules?.[columnName] || columnName
-                    });
-                }
-            }
-            
-            return columns;
-        }
-        
-        // Dividir por comas respetando paréntesis
-        function splitByComma(text) {
-            const result = [];
-            let current = '';
-            let parenCount = 0;
-            
-            for (let char of text) {
-                if (char === '(') parenCount++;
-                else if (char === ')') parenCount--;
-                else if (char === ',' && parenCount === 0) {
-                    if (current.trim()) result.push(current.trim());
-                    current = '';
-                    continue;
-                }
-                current += char;
-            }
-            
-            if (current.trim()) result.push(current.trim());
-            return result;
-        }
-        
-        // Determinar función de agregación
-        function getAggregateFunction(dataType) {
-            const upperType = dataType.toUpperCase();
-            if (upperType === 'DOUBLE' || upperType.includes('DECIMAL')) {
-                return 'sum';
-            }
-            return 'count';
-        }
-        
-        // Mostrar mapeo de campos
-        function displayFieldMapping() {
-            const content = document.getElementById('fieldMappingContent');
-            content.innerHTML = '';
-            
-            let countFields = 0, sumFields = 0;
-            
-            tableStructure.forEach((field, index) => {
-                if (field.aggregateFunction === 'count') countFields++;
-                else sumFields++;
-                
-                const row = document.createElement('div');
-                row.className = 'field-row';
-                row.innerHTML = `
-                    <div>${field.columnName}</div>
-                    <div>${field.dataType}</div>
-                    <div>${field.aggregateFunction}()</div>
-                    <input type="text" class="rename-input" value="${field.edvName}" 
-                           onchange="updateFieldName(${index}, this.value)">
-                `;
-                content.appendChild(row);
-            });
-            
-            // Mostrar estadísticas
-            const statsSection = document.getElementById('statsSection');
-            statsSection.innerHTML = `
-                <div class="stat-card">
-                    <div class="stat-number">${tableStructure.length}</div>
-                    <div class="stat-label">Total Campos</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${countFields}</div>
-                    <div class="stat-label">COUNT() Campos</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">${sumFields}</div>
-                    <div class="stat-label">SUM() Campos</div>
-                </div>
-            `;
-        }
-        
-        // Actualizar nombre de campo
-        function updateFieldName(index, newName) {
-            tableStructure[index].edvName = newName;
-        }
-        
-        // Generar todos los queries
-        function generateAllQueries() {
-            if (!tableStructure.length || !parameters.esquemaDDV) {
-                alert('Primero completa los parámetros y la estructura de tabla');
-                return;
-            }
-            
-            generatedQueries = {
-                universos: generateUniversosQuery(),
-                agrupados: generateAgrupadosQuery(),
-                minus1: generateMinusQuery(true),
-                minus2: generateMinusQuery(false)
-            };
-            
-            displayQueries();
-            switchTab('queries');
-        }
-        
-        // Generar query de universos
-        function generateUniversosQuery() {
-            const periodos = parameters.periodos.replace(/\s/g, '');
-            
-            return `--UNIVERSOS--
-select edv.codmes, numreg_ddv, numreg_edv, numreg_ddv - numreg_edv as diff_numreg 
-from (
-    select codmes, count(*) numreg_edv 
-    from ${parameters.esquemaEDV}.${parameters.tablaEDV} 
-    where codmes in ( ${periodos} ) 
-    group by codmes
-) edv 
-inner join (
-    select codmes, count(*) numreg_ddv 
-    from ${parameters.esquemaDDV}.${parameters.tablaDDV} 
-    where codmes in ( ${periodos} ) 
-    group by codmes
-) ddv on edv.codmes = ddv.codmes 
-order by edv.codmes;`;
-        }
-        
-        // Generar query de agrupados
-        function generateAgrupadosQuery() {
-            const periodos = parameters.periodos.replace(/\s/g, '');
-            const selectFields = tableStructure.map(field => 
-                `${field.aggregateFunction}(${field.edvName})`
-            ).join(', ');
-            
-            const selectFieldsDDV = tableStructure.map(field => 
-                `${field.aggregateFunction}(${field.columnName})`
-            ).join(', ');
-            
-            return `--AGRUPADOS--
-select * from (
-select 
-'EDV' capa, codmes, ${selectFields}
-from ${parameters.esquemaEDV}.${parameters.tablaEDV} 
-where codmes in ( ${periodos} ) 
-group by codmes
-union all
-select 
-'DDV' capa, codmes, ${selectFieldsDDV}
-from ${parameters.esquemaDDV}.${parameters.tablaDDV} 
-where codmes in ( ${periodos} ) 
-group by codmes
-) order by codmes, capa`;
-        }
-        
-        // Generar query MINUS
-        function generateMinusQuery(edvFirst) {
-            const periodos = parameters.periodos.replace(/\s/g, '');
-            const fieldsEDV = tableStructure.map(f => f.edvName).join(',');
-            const fieldsDDV = tableStructure.map(f => f.columnName).join(',');
-            
-            if (edvFirst) {
-                return `--MINUS EDV - DDV--
-select ${fieldsEDV}
-from ${parameters.esquemaEDV}.${parameters.tablaEDV}
-where codmes in ( ${periodos} )
-minus all
-select ${fieldsDDV}
-from ${parameters.esquemaDDV}.${parameters.tablaDDV}
-where codmes in ( ${periodos} )`;
-            } else {
-                return `--MINUS DDV - EDV--
-select ${fieldsDDV}
-from ${parameters.esquemaDDV}.${parameters.tablaDDV}
-where codmes in ( ${periodos} )
-minus all
-select ${fieldsEDV}
-from ${parameters.esquemaEDV}.${parameters.tablaEDV}
-where codmes in ( ${periodos} )`;
-            }
-        }
-        
-        // Mostrar queries generados
-        function displayQueries() {
-            const outputDiv = document.getElementById('queryOutputs');
-            outputDiv.innerHTML = '';
-            
-            const queryTypes = [
-                { key: 'universos', title: 'Query de Universos' },
-                { key: 'agrupados', title: 'Query de Agrupados' },
-                { key: 'minus1', title: 'Query MINUS (EDV - DDV)' },
-                { key: 'minus2', title: 'Query MINUS (DDV - EDV)' }
-            ];
-            
-            queryTypes.forEach(({ key, title }) => {
-                const section = document.createElement('div');
-                section.className = 'output-section';
-                section.innerHTML = `
-                    <h4>${title}</h4>
-                    <div class="query-output">${generatedQueries[key]}</div>
-                    <button class="btn btn-secondary" onclick="copyQuery('${key}')">Copiar Query</button>
-                `;
-                outputDiv.appendChild(section);
-            });
-        }
-        
-        // Copiar query al portapapeles
-        function copyQuery(queryKey) {
-            navigator.clipboard.writeText(generatedQueries[queryKey]);
-            alert('Query copiado al portapapeles');
-        }
-        
-        // Exportar a Excel
-        function exportToExcel() {
-            if (!Object.keys(generatedQueries).length) {
-                alert('Primero genera los queries');
-                return;
-            }
-            
-            const wb = XLSX.utils.book_new();
-            
-            // Hoja 1: Parámetros
-            const wsParams = XLSX.utils.aoa_to_sheet([
-                ['ESQUEMA', 'TABLA', 'FINAL (SE USARA EN LAS QUERYS DE RATIFICACION)'],
-                ['TABLA EDV', `${parameters.esquemaEDV}`, `${parameters.esquemaEDV}.${parameters.tablaEDV}`],
-                ['TABLA DDV', `${parameters.esquemaDDV}`, `${parameters.esquemaDDV}.${parameters.tablaDDV}`],
-                [],
-                ['PERIODOS', parameters.periodos.split(',')[0].trim(), `in ( ${parameters.periodos} )`]
-            ]);
-            XLSX.utils.book_append_sheet(wb, wsParams, 'PARAMETROS');
-            
-            // Hoja 2: Describe
-            const describeData = [
-                ['col_name', 'data_type', 'comment', 'col_name_EDV', 'METRICA', 'METRICA EDV', 'QUERY'],
-                ...tableStructure.map(field => [
-                    field.columnName,
-                    field.dataType,
-                    'null',
-                    field.edvName,
-                    `${field.aggregateFunction}(${field.columnName})`,
-                    `${field.aggregateFunction}(${field.edvName})`,
-                    `${field.aggregateFunction === 'count' ? 'DDV' : 'EDV'} ${field.aggregateFunction}(${field.columnName})`
-                ])
-            ];
-            const wsDescribe = XLSX.utils.aoa_to_sheet(describeData);
-            XLSX.utils.book_append_sheet(wb, wsDescribe, 'TABLA DESCRIBE');
-            
-            // Hoja 3: Queries
-            const queryData = [
-                ['TIPO', 'QUERY'],
-                ['UNIVERSOS', generatedQueries.universos],
-                ['AGRUPADOS', generatedQueries.agrupados],
-                ['MINUS_EDV_DDV', generatedQueries.minus1],
-                ['MINUS_DDV_EDV', generatedQueries.minus2]
-            ];
-            const wsQueries = XLSX.utils.aoa_to_sheet(queryData);
-            XLSX.utils.book_append_sheet(wb, wsQueries, 'QUERYS DE RATIFICACION');
-            
-            // Descargar archivo
-            XLSX.writeFile(wb, 'queries_ratificacion.xlsx');
-        }
-        
-        // Cargar ejemplo al inicio
-        window.onload = function() {
-            document.getElementById('esquemaDDV').value = 'catalog_lhcl_prod_bcp.bcp_ddv_matrizvariables_v';
-            document.getElementById('tablaDDV').value = 'hm_matrizdemografico';
-            document.getElementById('esquemaEDV').value = 'catalog_lhcl_prod_bcp_expl.bcp_edv_trdata_012';
-            document.getElementById('tablaEDV').value = 'hm_matrizdemografico_ruben';
-        };
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>
