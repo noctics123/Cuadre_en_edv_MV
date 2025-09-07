@@ -886,39 +886,205 @@ textarea {
     min-width: 200px;
 }
 
-/* Export preview */
-.export-preview {
+/* Export sections */
+.export-sections {
+    display: grid;
+    gap: 25px;
+}
+
+.export-section {
     background: var(--bg-white);
     border: 1px solid var(--border-color);
     border-radius: var(--border-radius);
     padding: 20px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.export-section h4 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.export-section p {
+    color: var(--secondary-color);
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.export-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.export-buttons .btn {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* Quick export en pestaña queries */
+.queries-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 25px;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.quick-export {
+    background: #f8f9fa;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 15px;
+    min-width: 300px;
+}
+
+.quick-export h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: var(--secondary-color);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.quick-export .export-buttons {
+    gap: 8px;
+}
+
+.quick-export .btn {
+    padding: 8px 16px;
+    font-size: 13px;
+    min-width: 80px;
+}
+
+/* Individual export groups */
+.individual-export-group {
+    background: #f8f9fa;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 15px;
+    margin-bottom: 10px;
+}
+
+.query-export-header {
+    margin-bottom: 10px;
+    color: var(--primary-color);
+    font-size: 14px;
+}
+
+.query-export-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.query-export-buttons .btn {
+    min-width: 60px;
+}
+
+/* Export preview mejorado */
+.export-preview {
+    background: var(--bg-white);
+    border: 1px solid var(--success-color);
+    border-radius: var(--border-radius);
+    padding: 20px;
     margin-top: 20px;
+    border-left: 4px solid var(--success-color);
 }
 
 .export-preview h4 {
     margin-top: 0;
     color: var(--success-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.export-stats {
+    margin: 15px 0;
+}
+
+.export-stats .stat-card {
+    background: linear-gradient(135deg, var(--success-color) 0%, #20c997 100%);
+}
+
+.sheets-list {
+    margin: 15px 0;
+}
+
+.sheets-list h5 {
+    color: var(--secondary-color);
+    margin-bottom: 8px;
+    font-size: 14px;
 }
 
 .sheets-list ul {
     list-style: none;
     padding: 0;
+    margin: 0;
 }
 
 .sheets-list li {
-    padding: 8px 0;
+    padding: 8px 12px;
     border-bottom: 1px solid var(--border-color);
     font-family: var(--font-mono);
-    font-size: 14px;
+    font-size: 13px;
+    background: #f8f9fa;
+    margin-bottom: 2px;
+    border-radius: 4px;
 }
 
 .sheets-list li:last-child {
     border-bottom: none;
+    margin-bottom: 0;
+}
+
+.sheets-list li strong {
+    color: var(--primary-color);
 }
 
 .export-actions {
     margin-top: 15px;
     text-align: center;
+}
+
+/* Responsivo para export */
+@media (max-width: 768px) {
+    .queries-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .quick-export {
+        min-width: auto;
+        width: 100%;
+    }
+    
+    .export-buttons {
+        flex-direction: column;
+    }
+    
+    .export-buttons .btn {
+        width: 100%;
+        min-width: auto;
+    }
+    
+    .query-export-buttons {
+        flex-direction: column;
+    }
+    
+    .export-sections {
+        gap: 15px;
+    }
+    
+    .export-section {
+        padding: 15px;
+    }
 }
 
 /* Diagnósticos */

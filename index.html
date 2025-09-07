@@ -116,7 +116,24 @@
         <div id="queries" class="tab-content">
             <h3>Queries de Ratificación</h3>
             
-            <button class="btn btn-success" onclick="QueryModule.generateAllQueries()">Generar Todos los Queries</button>
+            <div class="queries-header">
+                <button class="btn btn-success" onclick="QueryModule.generateAllQueries()">⚡ Generar Todos los Queries</button>
+                
+                <div class="quick-export" id="quickExportButtons" style="display: none;">
+                    <h4>📥 Export Rápido</h4>
+                    <div class="export-buttons">
+                        <button class="btn btn-secondary" onclick="ExportModule.exportQueries('sql')" title="Descargar todos los queries en formato SQL">
+                            📄 .SQL
+                        </button>
+                        <button class="btn btn-secondary" onclick="ExportModule.exportQueries('txt')" title="Descargar reporte completo en texto">
+                            📝 .TXT
+                        </button>
+                        <button class="btn btn-secondary" onclick="ExportModule.exportQueriesExcel()" title="Descargar Excel solo con queries">
+                            📊 .XLSX
+                        </button>
+                    </div>
+                </div>
+            </div>
             
             <div id="queryOutputs"></div>
         </div>
