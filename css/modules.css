@@ -704,3 +704,33 @@
     color: var(--secondary-color);
     font-size: var(--font-size-sm);
 }
+
+/* === MÓDULO DE EXPORT MEJORADO === */
+.export-sections {
+    display: grid;
+    gap: var(--spacing-xl);
+    width: 100%;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.export-section {
+    background: var(--bg-white);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: var(--spacing-xl);
+    border-left: 4px solid var(--primary-color);
+    width: 100%;
+}
+
+.export-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-md);
+    width: 100%;
+}
+
+.export-buttons .btn {
+    width: 100%;
+    justify-content: center;
+}

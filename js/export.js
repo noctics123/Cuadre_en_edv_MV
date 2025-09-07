@@ -586,6 +586,22 @@ const ExportModule = {
     },
 
     /**
+     * Genera nombre de archivo para queries específicos
+     * @param {string} extension - Extensión del archivo
+     * @returns {string} - Nombre del archivo
+     */
+    generateQueriesFilename(extension) {
+        const params = ParametersModule.getCurrentParameters();
+        const date = new Date().toISOString().split('T')[0];
+        const time = new Date().toTimeString().split(' ')[0].replace(/:/g, '');
+        
+        const tableName = params.tablaDDV || 'tabla';
+        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
+        
+        return `queries_${tableName}_${periods}_${date}_${time}.${extension}`;
+    },
+
+    /**
      * Exporta todos los queries en un único archivo TXT
      */
     exportAllQueriesTXT() {
@@ -687,7 +703,7 @@ const ExportModule = {
         this.downloadFile(content, filename, 'text/plain');
         
         UIModule.showNotification(
-            `📋 Reporte completo descargado: ${filename}`,
+            `Reporte completo descargado: ${filename}`,
             'success',
             4000
         );

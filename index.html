@@ -204,17 +204,54 @@
         
         <!-- TAB 5: EXPORTAR EXCEL -->
         <div id="export" class="tab-content">
-            <h3>Exportar a Excel</h3>
+            <h3>Exportar Resultados</h3>
             
-            <div class="form-group">
-                <label>Formato de Excel</label>
-                <select id="excelFormat">
-                    <option value="standard">Formato Estándar</option>
-                    <option value="cuadre">Formato Cuadre (como template original)</option>
-                </select>
+            <div class="export-sections">
+                <!-- Sección Excel Completo -->
+                <div class="export-section">
+                    <h4>📊 Export Completo (Excel)</h4>
+                    <p>Incluye parámetros, estructura de tabla, queries y metadatos</p>
+                    
+                    <div class="form-group">
+                        <label>Formato de Excel</label>
+                        <select id="excelFormat">
+                            <option value="standard">Formato Estándar</option>
+                            <option value="cuadre">Formato Cuadre (como template original)</option>
+                        </select>
+                    </div>
+                    
+                    <button class="btn btn-success" onclick="ExportModule.exportToExcel()">📋 Generar Excel Completo</button>
+                </div>
+
+                <!-- Sección Solo Queries -->
+                <div class="export-section">
+                    <h4>🔍 Export Solo Queries</h4>
+                    <p>Archivos ligeros con únicamente los queries de ratificación</p>
+                    
+                    <div class="export-buttons">
+                        <button class="btn" onclick="ExportModule.exportQueries('sql')" title="Archivo SQL ejecutable">
+                            📄 Descargar .SQL
+                        </button>
+                        <button class="btn" onclick="ExportModule.exportQueries('txt')" title="Archivo de texto con información completa">
+                            📝 Descargar .TXT
+                        </button>
+                        <button class="btn" onclick="ExportModule.exportQueriesExcel()" title="Excel solo con queries">
+                            📊 Descargar .XLSX (Solo Queries)
+                        </button>
+                        <button class="btn btn-warning" onclick="ExportModule.exportAllQueriesTXT()" title="Todos los queries (Universos, Agrupados, MINUS 1 y 2) en un archivo TXT">
+                            📋 TODOS LOS QUERIES (.TXT)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sección Queries Individuales -->
+                <div class="export-section">
+                    <h4>⚡ Export Individual</h4>
+                    <p>Descarga queries específicos por separado</p>
+                    
+                    <div id="individualExportButtons"></div>
+                </div>
             </div>
-            
-            <button class="btn btn-success" onclick="ExportModule.exportToExcel()">Generar Excel</button>
             
             <div id="exportPreview"></div>
         </div>
