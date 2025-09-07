@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extractor de Estructura de Tablas SQL</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .input-section {
+            margin-bottom: 30px;
+        }
+        
+        label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #34495e;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 15px;
+            border: 2px solid #bdc3c7;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+        }
+        
+        textarea:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+        
+        .button-group {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 0 10px;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #2980b9;
+        }
+        
+        .download-btn {
+            background: #27ae60;
+        }
+        
+        .download-btn:hover {
+            background: #219a52;
+        }
+        
+        .clear-btn {
+            background: #e74c3c;
+        }
+        
+        .clear-btn:hover {
+            background: #c0392b;
+        }
+        
+        .output-section {
+            margin-top: 30px;
+        }
+        
+        .output-box {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 20px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 2px solid #34495e;
+        }
+        
+        .stats {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .format-options {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .format-options label {
+            font-weight: normal;
+            margin-right: 20px;
+            cursor: pointer;
+        }
+        
+        .format-options input[type="radio"] {
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Extractor de Estructura de Tablas SQL</h1>
+        
+        <div class="input-section">
+            <label for="sqlInput">Pega aquí tu CREATE TABLE statement:</label>
+            <textarea id="sqlInput" placeholder="CREATE TABLE schema.table_name (
+    column1 VARCHAR(100),
+    column2 INT,
+    column3 DECIMAL(10,2)
+    ...
+)"></textarea>
+        </div>
+        
+        <div class="format-options">
+            <strong>Formato de salida:</strong><br><br>
+            <label><input type="radio" name="format" value="csv" checked> CSV (col_name, data_type, comment)</label>
+            <label><input type="radio" name="format" value="excel"> Excel compatible</label>
+            <label><input type="radio" name="format" value="markdown"> Markdown table</label>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="extractStructure()">Extraer Estructura</button>
+            <button class="download-btn" onclick="downloadResults()" id="downloadBtn" style="display: none;">Descargar CSV</button>
+            <button class="clear-btn" onclick="clearAll()">Limpiar</button>
+        </div>
+        
+        <div class="output-section" id="outputSection" style="display: none;">
+            <div class="stats" id="stats"></div>
+            <label for="output">Resultado:</label>
+            <div class="output-box" id="output"></div>
+        </div>
+    </div>
+
+    <script>
+        let extractedData = [];
+        
+        function extractStructure() {
+            const sqlInput = document.getElementById('sqlInput').value.trim();
+            const format = document.querySelector('input[name="format"]:checked').value;
+            
+            if (!sqlInput) {
+                alert('Por favor, pega un CREATE TABLE statement');
+                return;
+            }
+            
+            try {
+                const columns = parseCreateTable(sqlInput);
+                extractedData = columns;
+                displayResults(columns, format);
+                document.getElementById('downloadBtn').style.display = 'inline-block';
+                document.getElementById('outputSection').style.display = 'block';
+            } catch (error) {
+                alert('Error al procesar el SQL: ' + error.message);
+            }
+        }
+        
+        function parseCreateTable(sql) {
+            // Limpiar el SQL y extraer la parte de columnas
+            const cleanSql = sql.replace(/\s+/g, ' ').trim();
+            
+            // Buscar el patrón CREATE TABLE ... (columnas)
+            const tableMatch = cleanSql.match(/CREATE\s+TABLE\s+[^\(]+\(\s*(.*?)\s*\)\s*(?:USING|PARTITIONED|LOCATION|TBLPROPERTIES|$)/i);
+            
+            if (!tableMatch) {
+                throw new Error('No se pudo encontrar la definición de columnas en el CREATE TABLE');
+            }
+            
+            const columnsText = tableMatch[1];
+            const columns = [];
+            
+            // Dividir por comas, pero respetando paréntesis
+            const columnDefinitions = splitByComma(columnsText);
+            
+            for (let colDef of columnDefinitions) {
+                colDef = colDef.trim();
+                if (!colDef) continue;
+                
+                // Extraer nombre de columna y tipo de dato
+                const parts = colDef.split(/\s+/);
+                if (parts.length >= 2) {
+                    const columnName = parts[0];
+                    const dataType = parts[1];
+                    
+                    // Si el tipo tiene paréntesis, incluirlos
+                    let fullDataType = dataType;
+                    if (parts.length > 2 && parts[2].startsWith('(')) {
+                        // Buscar el paréntesis de cierre
+                        let parenContent = '';
+                        for (let i = 2; i < parts.length; i++) {
+                            parenContent += parts[i];
+                            if (parts[i].includes(')')) break;
+                        }
+                        fullDataType = dataType + parenContent;
+                    }
+                    
+                    columns.push({
+                        col_name: columnName,
+                        data_type: fullDataType,
+                        comment: null
+                    });
+                }
+            }
+            
+            return columns;
+        }
+        
+        function splitByComma(text) {
+            const result = [];
+            let current = '';
+            let parenCount = 0;
+            
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                
+                if (char === '(') {
+                    parenCount++;
+                } else if (char === ')') {
+                    parenCount--;
+                } else if (char === ',' && parenCount === 0) {
+                    if (current.trim()) {
+                        result.push(current.trim());
+                    }
+                    current = '';
+                    continue;
+                }
+                
+                current += char;
+            }
+            
+            if (current.trim()) {
+                result.push(current.trim());
+            }
+            
+            return result;
+        }
+        
+        function displayResults(columns, format) {
+            const stats = document.getElementById('stats');
+            const output = document.getElementById('output');
+            
+            stats.textContent = `Columnas extraídas: ${columns.length}`;
+            
+            let result = '';
+            
+            if (format === 'csv') {
+                result = 'col_name,data_type,comment\n';
+                result += columns.map(col => `${col.col_name},${col.data_type},${col.comment || 'null'}`).join('\n');
+            } else if (format === 'excel') {
+                result = 'col_name\tdata_type\tcomment\n';
+                result += columns.map(col => `${col.col_name}\t${col.data_type}\t${col.comment || 'null'}`).join('\n');
+            } else if (format === 'markdown') {
+                result = '| col_name | data_type | comment |\n';
+                result += '|----------|-----------|----------|\n';
+                result += columns.map(col => `| ${col.col_name} | ${col.data_type} | ${col.comment || 'null'} |`).join('\n');
+            }
+            
+            output.textContent = result;
+        }
+        
+        function downloadResults() {
+            if (extractedData.length === 0) {
+                alert('No hay datos para descargar');
+                return;
+            }
+            
+            const format = document.querySelector('input[name="format"]:checked').value;
+            let content = '';
+            let filename = '';
+            let mimeType = '';
+            
+            if (format === 'csv' || format === 'excel') {
+                content = 'col_name,data_type,comment\n';
+                content += extractedData.map(col => `"${col.col_name}","${col.data_type}","${col.comment || 'null'}"`).join('\n');
+                filename = 'table_structure.csv';
+                mimeType = 'text/csv';
+            } else if (format === 'markdown') {
+                content = '| col_name | data_type | comment |\n';
+                content += '|----------|-----------|----------|\n';
+                content += extractedData.map(col => `| ${col.col_name} | ${col.data_type} | ${col.comment || 'null'} |`).join('\n');
+                filename = 'table_structure.md';
+                mimeType = 'text/markdown';
+            }
+            
+            const blob = new Blob([content], { type: mimeType });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+        
+        function clearAll() {
+            document.getElementById('sqlInput').value = '';
+            document.getElementById('output').textContent = '';
+            document.getElementById('stats').textContent = '';
+            document.getElementById('outputSection').style.display = 'none';
+            document.getElementById('downloadBtn').style.display = 'none';
+            extractedData = [];
+        }
+        
+        // Cargar datos de ejemplo al cargar la página
+        window.onload = function() {
+            const exampleSQL = `CREATE TABLE catalog_lhcl_prod_bcp.bcp_ddv_matrizvariables.hm_matriztransaccioncanalpagotransferencia (
+    codclaveunicocli VARCHAR(128),
+    codclavepartycli VARCHAR(128),
+    codinternocomputacional VARCHAR(30),
+    codmesanalisis INT,
+    can_flg_tmo_tot_trf_u1m INT,
+    can_mto_tmo_tot_trf_u1m DECIMAL(23,6),
+    fecrutina DATE,
+    fecactualizacionregistro TIMESTAMP,
+    codmes INT
+)`;
+            document.getElementById('sqlInput').value = exampleSQL;
+        };
+    </script>
+</body>
+</html>
