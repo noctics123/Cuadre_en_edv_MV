@@ -586,19 +586,111 @@ const ExportModule = {
     },
 
     /**
-     * Genera nombre de archivo para queries específicos
-     * @param {string} extension - Extensión del archivo
-     * @returns {string} - Nombre del archivo
+     * Exporta todos los queries en un único archivo TXT
      */
-    generateQueriesFilename(extension) {
+    exportAllQueriesTXT() {
+        const queries = QueryModule.getGeneratedQueries();
+        
+        if (!queries || Object.keys(queries).length === 0) {
+            alert('No hay queries para exportar. Primero genera los queries en la pestaña correspondiente.');
+            return;
+        }
+        
         const params = ParametersModule.getCurrentParameters();
-        const date = new Date().toISOString().split('T')[0];
-        const time = new Date().toTimeString().split(' ')[0].replace(/:/g, '');
+        const tableStructure = TableAnalysisModule.getTableStructure();
         
-        const tableName = params.tablaDDV || 'tabla';
-        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
+        let content = `REPORTE COMPLETO DE CUADRE DDV vs EDV\n`;
+        content += `${'='.repeat(60)}\n\n`;
         
-        return `queries_${tableName}_${periods}_${date}_${time}.${extension}`;
+        // Información del proyecto
+        content += `INFORMACIÓN DEL PROYECTO:\n`;
+        content += `${'-'.repeat(30)}\n`;
+        content += `Fecha de generación: ${new Date().toLocaleString('es-ES')}\n`;
+        content += `Herramienta: Generador de Queries de Ratificación v2\n`;
+        content += `\n`;
+        content += `CONFIGURACIÓN:\n`;
+        content += `- Esquema DDV: ${params.esquemaDDV}\n`;
+        content += `- Tabla DDV: ${params.tablaDDV}\n`;
+        content += `- Esquema EDV: ${params.esquemaEDV}\n`;
+        content += `- Tabla EDV: ${params.tablaEDV}\n`;
+        content += `- Períodos: ${params.periodos}\n`;
+        content += `\n`;
+        
+        // Información de la estructura
+        content += `ESTRUCTURA DE TABLA:\n`;
+        content += `${'-'.repeat(25)}\n`;
+        content += `- Total campos: ${tableStructure.length}\n`;
+        content += `- Campos COUNT: ${tableStructure.filter(f => f.aggregateFunction === 'count').length}\n`;
+        content += `- Campos SUM: ${tableStructure.filter(f => f.aggregateFunction === 'sum').length}\n`;
+        if (tableStructure.length > 0) {
+            content += `- Porcentaje numérico: ${Math.round((tableStructure.filter(f => f.aggregateFunction === 'sum').length / tableStructure.length) * 100)}%\n`;
+        }
+        content += `\n`;
+        
+        // Resumen de queries
+        content += `QUERIES GENERADOS:\n`;
+        content += `${'-'.repeat(20)}\n`;
+        Object.entries(queries).forEach(([key, query]) => {
+            const title = this.getQueryTitle(key);
+            const lines = query.split('\n').length;
+            const chars = query.length;
+            content += `- ${title}: ${lines} líneas, ${chars} caracteres\n`;
+        });
+        content += `\n`;
+        
+        // Instrucciones de uso
+        content += `INSTRUCCIONES DE USO:\n`;
+        content += `${'-'.repeat(25)}\n`;
+        content += `1. Copiar el query deseado completo\n`;
+        content += `2. Pegar en tu editor SQL preferido\n`;
+        content += `3. Ejecutar en el motor de base de datos correspondiente\n`;
+        content += `4. Analizar los resultados para identificar diferencias\n`;
+        content += `5. Documentar hallazgos para seguimiento y corrección\n`;
+        content += `\n`;
+        
+        // Queries completos
+        const queryDescriptions = {
+            universos: 'Compara el número total de registros entre DDV y EDV',
+            agrupados: 'Compara métricas agregadas por cada campo',
+            minus1: 'Registros que están en EDV pero NO en DDV',
+            minus2: 'Registros que están en DDV pero NO en EDV'
+        };
+        
+        Object.entries(queries).forEach(([key, query]) => {
+            const title = this.getQueryTitle(key);
+            const description = queryDescriptions[key];
+            
+            content += `\n\n${'#'.repeat(80)}\n`;
+            content += `${title}\n`;
+            content += `${'#'.repeat(80)}\n\n`;
+            content += `DESCRIPCIÓN:\n${description}\n\n`;
+            content += `PARÁMETROS UTILIZADOS:\n`;
+            content += `- Esquema DDV: ${params.esquemaDDV}\n`;
+            content += `- Tabla DDV: ${params.tablaDDV}\n`;
+            content += `- Esquema EDV: ${params.esquemaEDV}\n`;
+            content += `- Tabla EDV: ${params.tablaEDV}\n`;
+            content += `- Períodos: ${params.periodos}\n\n`;
+            content += `QUERY SQL:\n`;
+            content += `${'-'.repeat(40)}\n`;
+            content += query;
+            content += `\n${'-'.repeat(40)}\n`;
+        });
+        
+        // Footer
+        content += `\n\n${'='.repeat(80)}\n`;
+        content += `FIN DEL REPORTE - Generado por: Generador de Queries de Ratificación v2\n`;
+        content += `Fecha: ${new Date().toISOString()}\n`;
+        content += `${'='.repeat(80)}`;
+        
+        // Descargar archivo
+        const filename = `reporte_completo_queries_${new Date().toISOString().split('T')[0]}.txt`;
+        this.downloadFile(content, filename, 'text/plain');
+        
+        UIModule.showNotification(
+            `📋 Reporte completo descargado: ${filename}`,
+            'success',
+            4000
+        );
     },
 
     /**
