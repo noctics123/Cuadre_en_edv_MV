@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador de Template de Ejemplo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        .info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .template-info {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .template-info h3 {
+            margin-top: 0;
+            color: #495057;
+        }
+        .template-info ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .template-info li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Generador de Template de Ejemplo</h1>
+        
+        <div class="info">
+            <h3>ℹ️ Información</h3>
+            <p>Este generador crea un template Excel de ejemplo con las pestañas y placeholders necesarios para el sistema de cuadre DDV vs EDV.</p>
+        </div>
+
+        <div class="template-info">
+            <h3>📋 Estructura del Template</h3>
+            <p>El template incluirá las siguientes pestañas:</p>
+            <ul>
+                <li><strong>Cuadre:</strong> Pestaña principal con todos los datos</li>
+                <li><strong>Universo:</strong> Pestaña específica para queries de universos</li>
+                <li><strong>Agrupados:</strong> Pestaña específica para queries agrupados</li>
+                <li><strong>Minus:</strong> Pestaña específica para queries minus</li>
+            </ul>
+            
+            <h4>Placeholders incluidos:</h4>
+            <ul>
+                <li><code>&lt;&lt;UNIVERSOS_SQL&gt;&gt;</code> - Query de universos</li>
+                <li><code>&lt;&lt;UNIVERSOS_TABLA&gt;&gt;</code> - Tabla de resultados universos</li>
+                <li><code>&lt;&lt;AGRUPADOS_SQL&gt;&gt;</code> - Query de agrupados</li>
+                <li><code>&lt;&lt;AGRUPADOS_TABLA&gt;&gt;</code> - Tabla de resultados agrupados</li>
+                <li><code>&lt;&lt;MINUS_SQL&gt;&gt;</code> - Query de minus</li>
+                <li><code>&lt;&lt;MINUS_TABLA&gt;&gt;</code> - Tabla de resultados minus</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center;">
+            <button class="btn btn-success" onclick="generateTemplate()">
+                📥 Generar Template de Ejemplo
+            </button>
+        </div>
+
+        <div class="info">
+            <h3>📝 Instrucciones de Uso</h3>
+            <ol>
+                <li>Haz clic en "Generar Template de Ejemplo" para descargar el archivo Excel</li>
+                <li>Abre el archivo descargado y personaliza el formato según tus necesidades</li>
+                <li>Guarda el archivo personalizado</li>
+                <li>En la aplicación principal, ve a la pestaña "Exportar Excel"</li>
+                <li>Haz clic en "Cargar Template" y selecciona tu archivo personalizado</li>
+                <li>Genera los queries y haz clic en "GENERAR EXCEL CUADRE EDV"</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        async function generateTemplate() {
+            try {
+                const workbook = new ExcelJS.Workbook();
+                
+                // Crear pestaña principal "Cuadre"
+                const cuadreSheet = workbook.addWorksheet('Cuadre');
+                await createCuadreSheet(cuadreSheet);
+                
+                // Crear pestaña "Universo"
+                const universoSheet = workbook.addWorksheet('Universo');
+                await createUniversoSheet(universoSheet);
+                
+                // Crear pestaña "Agrupados"
+                const agrupadosSheet = workbook.addWorksheet('Agrupados');
+                await createAgrupadosSheet(agrupadosSheet);
+                
+                // Crear pestaña "Minus"
+                const minusSheet = workbook.addWorksheet('Minus');
+                await createMinusSheet(minusSheet);
+                
+                // Generar y descargar archivo
+                const buffer = await workbook.xlsx.writeBuffer();
+                const blob = new Blob([buffer], { 
+                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+                });
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'template_cuadre_edv_ejemplo.xlsx';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+                alert('✅ Template generado y descargado correctamente!');
+                
+            } catch (error) {
+                console.error('Error generando template:', error);
+                alert('❌ Error generando template: ' + error.message);
+            }
+        }
+
+        async function createCuadreSheet(worksheet) {
+            // Configurar columnas
+            worksheet.columns = [
+                { width: 15 }, { width: 25 }, { width: 25 }, { width: 25 },
+                { width: 25 }, { width: 25 }, { width: 25 }, { width: 25 }
+            ];
+
+            let row = 1;
+
+            // Título principal
+            worksheet.mergeCells(`A${row}:H${row}`);
+            const titleCell = worksheet.getCell(`A${row}`);
+            titleCell.value = 'CUADRE DDV vs EDV - TEMPLATE';
+            titleCell.style = {
+                font: { size: 16, bold: true, color: { argb: 'FFFFFFFF' } },
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF007BFF' } },
+                alignment: { horizontal: 'center', vertical: 'middle' }
+            };
+            worksheet.getRow(row).height = 40;
+            row += 2;
+
+            // Sección Universos
+            row = addSection(worksheet, row, 'UNIVERSOS');
+            row = addSubsection(worksheet, row, 'Query SQL');
+            worksheet.getCell(`B${row}`).value = '<<UNIVERSOS_SQL>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:H${row}`);
+            row += 3;
+            
+            row = addSubsection(worksheet, row, 'Resultados');
+            worksheet.getCell(`B${row}`).value = '<<UNIVERSOS_TABLA>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:H${row}`);
+            row += 3;
+
+            // Sección Agrupados
+            row = addSection(worksheet, row, 'AGRUPADOS');
+            row = addSubsection(worksheet, row, 'Query SQL');
+            worksheet.getCell(`B${row}`).value = '<<AGRUPADOS_SQL>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:H${row}`);
+            row += 3;
+            
+            row = addSubsection(worksheet, row, 'Resultados');
+            worksheet.getCell(`B${row}`).value = '<<AGRUPADOS_TABLA>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:H${row}`);
+            row += 3;
+
+            // Sección Minus
+            row = addSection(worksheet, row, 'MINUS');
+            row = addSubsection(worksheet, row, 'Query SQL');
+            worksheet.getCell(`B${row}`).value = '<<MINUS_SQL>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:H${row}`);
+            row += 3;
+            
+            row = addSubsection(worksheet, row, 'Resultados');
+            worksheet.getCell(`B${row}`).value = '<<MINUS_TABLA>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:H${row}`);
+        }
+
+        async function createUniversoSheet(worksheet) {
+            worksheet.columns = [
+                { width: 15 }, { width: 30 }, { width: 30 }, { width: 30 }
+            ];
+
+            let row = 1;
+
+            // Título
+            worksheet.mergeCells(`A${row}:D${row}`);
+            const titleCell = worksheet.getCell(`A${row}`);
+            titleCell.value = 'UNIVERSOS - CUADRE DDV vs EDV';
+            titleCell.style = {
+                font: { size: 14, bold: true, color: { argb: 'FFFFFFFF' } },
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF28A745' } },
+                alignment: { horizontal: 'center', vertical: 'middle' }
+            };
+            worksheet.getRow(row).height = 35;
+            row += 2;
+
+            // Query SQL
+            row = addSubsection(worksheet, row, 'Query SQL');
+            worksheet.getCell(`B${row}`).value = '<<UNIV_SQL>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:D${row}`);
+            row += 3;
+
+            // Tabla de resultados
+            row = addSubsection(worksheet, row, 'Resultados');
+            worksheet.getCell(`B${row}`).value = '<<UNIV_TABLA>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:D${row}`);
+        }
+
+        async function createAgrupadosSheet(worksheet) {
+            worksheet.columns = [
+                { width: 15 }, { width: 30 }, { width: 30 }, { width: 30 }
+            ];
+
+            let row = 1;
+
+            // Título
+            worksheet.mergeCells(`A${row}:D${row}`);
+            const titleCell = worksheet.getCell(`A${row}`);
+            titleCell.value = 'AGRUPADOS - CUADRE DDV vs EDV';
+            titleCell.style = {
+                font: { size: 14, bold: true, color: { argb: 'FFFFFFFF' } },
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC107' } },
+                alignment: { horizontal: 'center', vertical: 'middle' }
+            };
+            worksheet.getRow(row).height = 35;
+            row += 2;
+
+            // Query SQL
+            row = addSubsection(worksheet, row, 'Query SQL');
+            worksheet.getCell(`B${row}`).value = '<<AGR_SQL>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:D${row}`);
+            row += 3;
+
+            // Tabla de resultados
+            row = addSubsection(worksheet, row, 'Resultados');
+            worksheet.getCell(`B${row}`).value = '<<AGR_TABLA>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:D${row}`);
+        }
+
+        async function createMinusSheet(worksheet) {
+            worksheet.columns = [
+                { width: 15 }, { width: 30 }, { width: 30 }, { width: 30 }
+            ];
+
+            let row = 1;
+
+            // Título
+            worksheet.mergeCells(`A${row}:D${row}`);
+            const titleCell = worksheet.getCell(`A${row}`);
+            titleCell.value = 'MINUS - CUADRE DDV vs EDV';
+            titleCell.style = {
+                font: { size: 14, bold: true, color: { argb: 'FFFFFFFF' } },
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDC3545' } },
+                alignment: { horizontal: 'center', vertical: 'middle' }
+            };
+            worksheet.getRow(row).height = 35;
+            row += 2;
+
+            // Query SQL
+            row = addSubsection(worksheet, row, 'Query SQL');
+            worksheet.getCell(`B${row}`).value = '<<MINUS_SQL>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:D${row}`);
+            row += 3;
+
+            // Tabla de resultados
+            row = addSubsection(worksheet, row, 'Resultados');
+            worksheet.getCell(`B${row}`).value = '<<MINUS_TABLA>>';
+            applyPlaceholderStyle(worksheet.getCell(`B${row}`));
+            worksheet.mergeCells(`B${row}:D${row}`);
+        }
+
+        function addSection(worksheet, row, title) {
+            const cell = worksheet.getCell(`A${row}`);
+            cell.value = title;
+            cell.style = {
+                font: { size: 12, bold: true, color: { argb: 'FFEBCB8B' } },
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E3440' } },
+                alignment: { horizontal: 'left', vertical: 'middle' }
+            };
+            worksheet.getRow(row).height = 30;
+            return row + 1;
+        }
+
+        function addSubsection(worksheet, row, title) {
+            const cell = worksheet.getCell(`A${row}`);
+            cell.value = title;
+            cell.style = {
+                font: { size: 11, bold: true, color: { argb: 'FF2E3440' } },
+                alignment: { horizontal: 'left', vertical: 'middle' }
+            };
+            return row + 1;
+        }
+
+        function applyPlaceholderStyle(cell) {
+            cell.style = {
+                font: { name: 'Consolas', size: 10, color: { argb: 'FFECEFF4' } },
+                fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B4252' } },
+                alignment: { horizontal: 'left', vertical: 'top', wrapText: true },
+                border: {
+                    top: { style: 'thin', color: { argb: 'FF4C566A' } },
+                    left: { style: 'thin', color: { argb: 'FF4C566A' } },
+                    bottom: { style: 'thin', color: { argb: 'FF4C566A' } },
+                    right: { style: 'thin', color: { argb: 'FF4C566A' } }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
