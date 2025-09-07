@@ -523,5 +523,13 @@ order by ${targetField}, ddv_codmes, edv_codmes;`;
         if (outputDiv) {
             outputDiv.innerHTML = '<p style="text-align: center; color: #6c757d;">No hay queries generados</p>';
         }
+        
+        // Ocultar botones de export rápido
+        this.hideQuickExportButtons();
+        
+        // Actualizar botones de export individual
+        if (typeof ExportModule !== 'undefined' && ExportModule.updateIndividualExportButtons) {
+            ExportModule.updateIndividualExportButtons();
+        }
     }
 };
