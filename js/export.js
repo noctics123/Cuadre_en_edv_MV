@@ -854,5 +854,160 @@ const ExportModule = {
         }
         
         return parts;
+    },
+
+    /**
+     * Divide query en partes lógicas
+     */
+    splitQueryIntoLogicalParts(query, keyword) {
+        if (!query) return [''];
+        
+        const lines = query.split('\n');
+        const parts = [];
+        let currentPart = '';
+        
+        for (const line of lines) {
+            if ((currentPart + '\n' + line).length > 30000 && currentPart.length > 0) {
+                parts.push(currentPart.trim());
+                currentPart = line;
+            } else {
+                currentPart += (currentPart ? '\n' : '') + line;
+            }
+        }
+        
+        if (currentPart.trim()) {
+            parts.push(currentPart.trim());
+        }
+        
+        return parts.length > 0 ? parts : [query];
+    },
+
+    /**
+     * Exporta Excel específico para V3 - Formato Cuadre EDV
+     */
+    exportCuadreEDV() {
+        const queries = QueryModule.getGeneratedQueries();
+        const params = ParametersModule.getCurrentParameters();
+        
+        if (!queries || Object.keys(queries).length === 0) {
+            alert('No hay queries para exportar. Primero genera los queries en la pestaña correspondiente.');
+            return;
+        }
+        
+        // Generar nombre de archivo
+        const tableName = params.tablaDDV || 'TABLA';
+        const periods = params.periodos ? params.periodos.replace(/\s/g, '').replace(/,/g, '_') : 'periodos';
+        const filename = `cuadre_${tableName.toUpperCase()}_${periods}.xlsx`;
+        
+        const wb = XLSX.utils.book_new();
+        
+        // Crear las 3 pestañas específicas
+        this.createUniversoSheet(wb, queries.universos);
+        this.createAgrupadoSheet(wb, queries.agrupados);
+        this.createMinusSheet(wb, queries.minus1, queries.minus2);
+        
+        // Descargar
+        XLSX.writeFile(wb, filename);
+        
+        UIModule.showNotification(`Excel de cuadre generado: ${filename}`, 'success', 5000);
+    },
+
+    /**
+     * Crea hoja Universo
+     */
+    createUniversoSheet(wb, queryUniverso) {
+        const lines = this.splitQueryIntoLogicalParts(queryUniverso, 'SELECT');
+        
+        const data = [
+            ['QUERY UNIVERSO - Compara número total de registros'],
+            [''],
+            ...lines.map((line, index) => [`Parte ${index + 1}`, line])
+        ];
+        
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        ws['!cols'] = [{ width: 15 }, { width: 100 }];
+        XLSX.utils.book_append_sheet(wb, ws, 'Universo');
+    },
+
+    /**
+     * Crea hoja Agrupado (la más compleja)
+     */
+    createAgrupadoSheet(wb, queryAgrupado) {
+        const parts = this.splitComplexQuery(queryAgrupado);
+        
+        const data = [
+            ['QUERY AGRUPADO - Compara métricas por campo'],
+            [''],
+            ['PARTE', 'CODIGO SQL'],
+            ...parts.map((part, index) => [`${index + 1}`, part])
+        ];
+        
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        ws['!cols'] = [{ width: 10 }, { width: 120 }];
+        XLSX.utils.book_append_sheet(wb, ws, 'Agrupado');
+    },
+
+    /**
+     * Crea hoja Minus
+     */
+    createMinusSheet(wb, queryMinus1, queryMinus2) {
+        const parts1 = this.splitComplexQuery(queryMinus1);
+        const parts2 = this.splitComplexQuery(queryMinus2);
+        
+        const data = [
+            ['QUERIES MINUS - Detecta diferencias'],
+            [''],
+            ['MINUS 1 (EDV - DDV)', ''],
+            ...parts1.map((part, index) => [`Parte ${index + 1}`, part]),
+            [''],
+            ['MINUS 2 (DDV - EDV)', ''],
+            ...parts2.map((part, index) => [`Parte ${index + 1}`, part])
+        ];
+        
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        ws['!cols'] = [{ width: 20 }, { width: 100 }];
+        XLSX.utils.book_append_sheet(wb, ws, 'Minus');
+    },
+
+    /**
+     * Divide query complejo inteligentemente
+     */
+    splitComplexQuery(query) {
+        if (!query || query.length <= 30000) {
+            return [query];
+        }
+        
+        const parts = [];
+        const lines = query.split('\n');
+        let currentPart = '';
+        let fieldCount = 0;
+        
+        for (const line of lines) {
+            // Si es una línea con campos count() o sum()
+            if (line.includes('count(') || line.includes('sum(')) {
+                fieldCount++;
+                
+                // Cada 10 campos, hacer nueva parte
+                if (fieldCount % 10 === 0) {
+                    parts.push(currentPart + line);
+                    currentPart = '';
+                    continue;
+                }
+            }
+            
+            // Si agregar esta línea excede 30k, partir
+            if ((currentPart + '\n' + line).length > 30000 && currentPart.length > 0) {
+                parts.push(currentPart);
+                currentPart = line;
+            } else {
+                currentPart += (currentPart ? '\n' : '') + line;
+            }
+        }
+        
+        if (currentPart) {
+            parts.push(currentPart);
+        }
+        
+        return parts;
     }
 };
