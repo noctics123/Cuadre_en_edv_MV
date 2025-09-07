@@ -78,14 +78,22 @@
             </div>
             
             <div class="form-group">
-                <label>CREATE TABLE Statement</label>
-                <textarea id="createTableInput" placeholder="Pega aquí tu CREATE TABLE o selecciona una tabla del repositorio..."></textarea>
+                <label>CREATE TABLE Statement o Query Completa</label>
+                <textarea id="createTableInput" placeholder="Pega aquí tu CREATE TABLE, query completa, o cualquier texto que contenga un CREATE TABLE..."></textarea>
             </div>
             
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;">
+                <button class="btn" onclick="detectCreateTable()" style="background: #28a745;">🔍 Detectar CREATE TABLE</button>
                 <button class="btn" onclick="parseCreateTable()">Analizar Estructura</button>
                 <button class="btn btn-secondary" onclick="saveToRepository()">Guardar en Repositorio</button>
                 <button class="btn btn-secondary" onclick="showRepositoryManager()">Gestionar Repositorio</button>
+            </div>
+            
+            <div class="form-group">
+                <p style="color: #6c757d; font-size: 14px; margin-top: 10px;">
+                    💡 <strong>Tip:</strong> Puedes pegar cualquier texto que contenga un CREATE TABLE (queries, archivos SQL, documentación, etc.) 
+                    y usar "Detectar CREATE TABLE" para extraerlo automáticamente.
+                </p>
             </div>
             
             <div id="fieldMapping" style="display: none;">
@@ -133,9 +141,19 @@
             </div>
             
             <div style="margin-bottom: 20px;">
-                <button class="btn" onclick="importFromFile()">Importar CREATE TABLEs</button>
-                <button class="btn btn-secondary" onclick="exportRepository()">Exportar Repositorio</button>
-                <button class="btn btn-secondary" onclick="clearRepository()">Limpiar Todo</button>
+                <button class="btn" onclick="importFromFile()">📁 Importar Archivo .sql/.txt</button>
+                <button class="btn btn-secondary" onclick="exportRepository()">📤 Exportar Repositorio</button>
+                <button class="btn btn-secondary" onclick="clearRepository()">🗑️ Limpiar Todo</button>
+            </div>
+            
+            <div class="form-group">
+                <p style="color: #6c757d; font-size: 14px;">
+                    💡 <strong>Funcionalidades del repositorio:</strong><br>
+                    • <strong>Detección automática:</strong> Al pegar texto, detecta CREATE TABLEs automáticamente<br>
+                    • <strong>Auto-completado:</strong> Sugiere esquemas DDV/EDV basado en patrones<br>
+                    • <strong>Importación masiva:</strong> Sube archivos .sql con múltiples CREATE TABLEs<br>
+                    • <strong>Persistencia:</strong> Guarda todo en tu navegador para uso futuro
+                </p>
             </div>
             
             <div id="repositoryList"></div>
