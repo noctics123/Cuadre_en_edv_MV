@@ -157,7 +157,7 @@ const ExportModule = {
         // Crear workbook con pestañas separadas
         const workbook = new ExcelJS.Workbook();
         
-        // Crear pestañas separadas para cada sección
+        // Crear pestañas separadas para cada sección (como en las imágenes)
         const universosSheet = workbook.addWorksheet('Universos', {
             pageSetup: { paperSize: 9, orientation: 'landscape' }
         });
@@ -207,18 +207,18 @@ const ExportModule = {
         headerCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
         headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF800080' } };
         headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        currentRow = 3;
+        currentRow = 2;
 
-        // Sección (UNIVERSOS, AGRUPADOS, MINUS)
-        const sectionCell = worksheet.getCell(`A${currentRow}`);
+        // Sección (UNIVERSOS, AGRUPADOS, MINUS) - como en las imágenes
+        const sectionCell = worksheet.getCell(`B${currentRow}`);
         sectionCell.value = sectionName;
-        sectionCell.font = { bold: true, size: 14 };
-        currentRow++;
+        sectionCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+        currentRow += 2;
 
         // Código
-        const codigoCell = worksheet.getCell(`A${currentRow}`);
-        codigoCell.value = 'Código';
-        codigoCell.font = { bold: true };
+        const codigoCell = worksheet.getCell(`B${currentRow}`);
+        codigoCell.value = 'Codigo';
+        codigoCell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
         currentRow++;
 
         // Query SQL con formato azul oscuro
@@ -247,9 +247,9 @@ const ExportModule = {
         currentRow += 22;
 
         // Resultado
-        const resultadoCell = worksheet.getCell(`A${currentRow}`);
+        const resultadoCell = worksheet.getCell(`B${currentRow}`);
         resultadoCell.value = 'Resultado';
-        resultadoCell.font = { bold: true };
+        resultadoCell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
         currentRow++;
 
         // Tabla de resultados con formato azul oscuro
@@ -835,20 +835,29 @@ const ExportModule = {
             try {
                 console.log(`Procesando pestaña: ${worksheet.name}`);
                 
-                // Buscar celdas vacías o con texto genérico donde insertar contenido
-                const insertionPoints = this.findGenericInsertionPoints(worksheet);
+                // Determinar el tipo de contenido basado en el nombre de la pestaña
+                const sheetType = this.determineSheetType(worksheet.name);
                 
-                if (insertionPoints.length > 0) {
-                    console.log(`Encontrados ${insertionPoints.length} puntos de inserción en ${worksheet.name}`);
-                    
-                    // Insertar contenido en los puntos encontrados
-                    const inserted = await this.insertAtGenericPoints(worksheet, insertionPoints, data);
+                if (sheetType) {
+                    console.log(`Pestaña identificada como: ${sheetType}`);
+                    const inserted = await this.replaceExistingContent(worksheet, data, sheetType);
                     totalInserted += inserted;
                 } else {
-                    // Si no hay puntos de inserción, agregar al final
-                    console.log(`No se encontraron puntos de inserción, agregando al final de ${worksheet.name}`);
-                    const inserted = await this.insertAtEnd(worksheet, data);
-                    totalInserted += inserted;
+                    // Buscar celdas vacías o con texto genérico donde insertar contenido
+                    const insertionPoints = this.findGenericInsertionPoints(worksheet);
+                    
+                    if (insertionPoints.length > 0) {
+                        console.log(`Encontrados ${insertionPoints.length} puntos de inserción en ${worksheet.name}`);
+                        
+                        // Insertar contenido en los puntos encontrados
+                        const inserted = await this.insertAtGenericPoints(worksheet, insertionPoints, data);
+                        totalInserted += inserted;
+                    } else {
+                        // Si no hay puntos de inserción, agregar al final
+                        console.log(`No se encontraron puntos de inserción, agregando al final de ${worksheet.name}`);
+                        const inserted = await this.insertAtEnd(worksheet, data);
+                        totalInserted += inserted;
+                    }
                 }
                 
             } catch (error) {
@@ -857,6 +866,239 @@ const ExportModule = {
         }
         
         return { inserted: totalInserted };
+    },
+
+    /**
+     * Determina el tipo de pestaña basado en su nombre
+     */
+    determineSheetType(sheetName) {
+        const lowerName = sheetName.toLowerCase();
+        
+        if (lowerName.includes('universo')) {
+            return 'universos';
+        } else if (lowerName.includes('agrupado')) {
+            return 'agrupados';
+        } else if (lowerName.includes('minus')) {
+            return 'minus';
+        }
+        
+        return null;
+    },
+
+    /**
+     * Reemplaza el contenido existente en la pestaña con las queries generadas
+     */
+    async replaceExistingContent(worksheet, data, sheetType) {
+        console.log(`Reemplazando contenido existente en pestaña ${sheetType}...`);
+        let insertedCount = 0;
+        
+        try {
+            // Buscar las celdas que contienen el código SQL existente
+            const codeCells = this.findCodeCells(worksheet);
+            
+            if (codeCells.length > 0) {
+                console.log(`Encontradas ${codeCells.length} celdas con código SQL existente`);
+                
+                // Obtener la query correspondiente al tipo de pestaña
+                const queryData = this.getQueryForSheetType(data, sheetType);
+                
+                if (queryData && queryData.sql) {
+                    // Reemplazar el contenido de las celdas de código
+                    await this.replaceCodeCells(worksheet, codeCells, queryData.sql);
+                    insertedCount++;
+                    
+                    // Buscar y reemplazar celdas de resultado si existen
+                    const resultCells = this.findResultCells(worksheet);
+                    if (resultCells.length > 0 && queryData.tabla) {
+                        await this.replaceResultCells(worksheet, resultCells, queryData.tabla);
+                        insertedCount++;
+                    }
+                }
+            } else {
+                console.log('No se encontraron celdas con código SQL existente, insertando al final');
+                const inserted = await this.insertAtEnd(worksheet, data);
+                insertedCount += inserted;
+            }
+            
+        } catch (error) {
+            console.warn(`Error reemplazando contenido en ${sheetType}:`, error.message);
+        }
+        
+        return insertedCount;
+    },
+
+    /**
+     * Encuentra las celdas que contienen código SQL
+     */
+    findCodeCells(worksheet) {
+        const codeCells = [];
+        
+        for (let row = 1; row <= Math.min(100, worksheet.rowCount); row++) {
+            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
+                const cell = worksheet.getCell(row, col);
+                const value = cell.value;
+                
+                if (value && typeof value === 'string') {
+                    const lowerValue = value.toLowerCase();
+                    
+                    // Buscar celdas que contengan SQL
+                    if (lowerValue.includes('select') || 
+                        lowerValue.includes('from') || 
+                        lowerValue.includes('where') ||
+                        lowerValue.includes('union') ||
+                        lowerValue.includes('minus')) {
+                        
+                        codeCells.push({
+                            row,
+                            col,
+                            value: value,
+                            cell: cell
+                        });
+                    }
+                }
+            }
+        }
+        
+        return codeCells;
+    },
+
+    /**
+     * Encuentra las celdas que contienen resultados
+     */
+    findResultCells(worksheet) {
+        const resultCells = [];
+        
+        for (let row = 1; row <= Math.min(100, worksheet.rowCount); row++) {
+            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
+                const cell = worksheet.getCell(row, col);
+                const value = cell.value;
+                
+                if (value && typeof value === 'string') {
+                    const lowerValue = value.toLowerCase();
+                    
+                    // Buscar celdas que contengan "resultado"
+                    if (lowerValue.includes('resultado')) {
+                        resultCells.push({
+                            row,
+                            col,
+                            value: value,
+                            cell: cell
+                        });
+                    }
+                }
+            }
+        }
+        
+        return resultCells;
+    },
+
+    /**
+     * Obtiene la query correspondiente al tipo de pestaña
+     */
+    getQueryForSheetType(data, sheetType) {
+        switch (sheetType) {
+            case 'universos':
+                return data.universos || { sql: data.sqlUniv, tabla: data.tablaUniv };
+            case 'agrupados':
+                return data.agrupados || { sql: data.sqlAgr, tabla: data.tablaAgr };
+            case 'minus':
+                return data.minus1 || { sql: data.sqlMinus, tabla: data.tablaMinus };
+            default:
+                return null;
+        }
+    },
+
+    /**
+     * Reemplaza las celdas de código con la nueva query
+     */
+    async replaceCodeCells(worksheet, codeCells, newQuery) {
+        console.log(`Reemplazando ${codeCells.length} celdas de código con nueva query`);
+        
+        // Limpiar las celdas existentes
+        codeCells.forEach(cellInfo => {
+            cellInfo.cell.value = '';
+        });
+        
+        // Insertar la nueva query en la primera celda de código
+        if (codeCells.length > 0) {
+            const firstCell = codeCells[0];
+            const cell = worksheet.getCell(firstCell.row, firstCell.col);
+            
+            // Aplicar formato de código SQL
+            cell.value = newQuery;
+            cell.font = { 
+                name: 'Consolas', 
+                size: 10, 
+                color: { argb: 'FFFFFFFF' } 
+            };
+            cell.fill = { 
+                type: 'pattern', 
+                pattern: 'solid', 
+                fgColor: { argb: 'FF1F4E79' } 
+            };
+            cell.alignment = { 
+                horizontal: 'left', 
+                vertical: 'top', 
+                wrapText: true 
+            };
+            
+            // Merge para el área del query (aproximadamente 20 filas)
+            const endRow = Math.min(firstCell.row + 20, worksheet.rowCount);
+            worksheet.mergeCells(firstCell.row, firstCell.col, endRow, firstCell.col + 10);
+            
+            console.log(`Query insertada en celda ${firstCell.row},${firstCell.col}`);
+        }
+    },
+
+    /**
+     * Reemplaza las celdas de resultado con la nueva tabla
+     */
+    async replaceResultCells(worksheet, resultCells, newTable) {
+        console.log(`Reemplazando ${resultCells.length} celdas de resultado con nueva tabla`);
+        
+        if (resultCells.length > 0 && newTable && newTable.length > 0) {
+            const firstResultCell = resultCells[0];
+            const startRow = firstResultCell.row + 1; // Empezar después de "Resultado"
+            
+            // Limpiar área de resultados
+            for (let row = startRow; row <= startRow + 10; row++) {
+                for (let col = 1; col <= 20; col++) {
+                    const cell = worksheet.getCell(row, col);
+                    cell.value = '';
+                }
+            }
+            
+            // Insertar headers
+            const headers = Object.keys(newTable[0]);
+            headers.forEach((header, index) => {
+                const cell = worksheet.getCell(startRow, index + 2);
+                cell.value = header;
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { 
+                    type: 'pattern', 
+                    pattern: 'solid', 
+                    fgColor: { argb: 'FF1F4E79' } 
+                };
+                cell.alignment = { horizontal: 'center' };
+            });
+            
+            // Insertar datos
+            newTable.forEach((row, rowIndex) => {
+                headers.forEach((header, colIndex) => {
+                    const cell = worksheet.getCell(startRow + rowIndex + 1, colIndex + 2);
+                    cell.value = row[header];
+                    cell.font = { color: { argb: 'FFFFFFFF' } };
+                    cell.fill = { 
+                        type: 'pattern', 
+                        pattern: 'solid', 
+                        fgColor: { argb: 'FF1F4E79' } 
+                    };
+                    cell.alignment = { horizontal: 'center' };
+                });
+            });
+            
+            console.log(`Tabla insertada en fila ${startRow} con ${newTable.length} filas`);
+        }
     },
 
     /**
