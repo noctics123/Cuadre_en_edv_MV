@@ -122,8 +122,16 @@ const ExportModule = {
         if (processedSheets.length === 0) {
             // Si no se procesó ninguna pestaña, intentar inserción genérica
             console.warn('No se encontraron placeholders específicos, intentando inserción genérica...');
-            await this.insertGenericContent(workbook, data);
-            processedSheets.push('Inserción genérica');
+            const genericResult = await this.insertGenericContent(workbook, data);
+            if (genericResult && genericResult.inserted > 0) {
+                processedSheets.push('Inserción genérica');
+                console.log(`✅ Inserción genérica completada: ${genericResult.inserted} elementos insertados`);
+            } else {
+                console.warn('⚠️ No se pudo insertar contenido genérico, generando Excel básico...');
+                // Como último recurso, crear un Excel básico
+                await this.createBasicExcel(workbook, data);
+                processedSheets.push('Excel básico generado');
+            }
         }
 
         // Generar archivo y descargar
@@ -146,12 +154,43 @@ const ExportModule = {
     async exportWithAutoGeneration(queries, params) {
         const ExcelJS = await this.loadExcelJS();
         
-        // Crear workbook
+        // Crear workbook con pestañas separadas
         const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Cuadre DDV vs EDV', {
+        
+        // Crear pestañas separadas para cada sección
+        const universosSheet = workbook.addWorksheet('Universos', {
+            pageSetup: { paperSize: 9, orientation: 'landscape' }
+        });
+        const agrupadosSheet = workbook.addWorksheet('Agrupados', {
+            pageSetup: { paperSize: 9, orientation: 'landscape' }
+        });
+        const minusSheet = workbook.addWorksheet('Minus', {
+            pageSetup: { paperSize: 9, orientation: 'landscape' }
+        });
+        const resumenSheet = workbook.addWorksheet('Resumen', {
             pageSetup: { paperSize: 9, orientation: 'landscape' }
         });
 
+        // Formatear cada pestaña con el formato correcto
+        this.formatSheetWithCorrectStyle(universosSheet, 'UNIVERSOS', queries.universos, params);
+        this.formatSheetWithCorrectStyle(agrupadosSheet, 'AGRUPADOS', queries.agrupados, params);
+        this.formatSheetWithCorrectStyle(minusSheet, 'MINUS', queries.minus1, params);
+        this.createResumenSheet(resumenSheet, params);
+
+        // Generar archivo y descargar
+        const filename = this.generateAutoFilename(params);
+        const buffer = await workbook.xlsx.writeBuffer();
+        this.downloadExcelBuffer(buffer, filename);
+
+        if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
+            UIModule.showNotification(`Excel generado automáticamente con formato correcto: ${filename}`, 'success', 5000);
+        }
+    },
+
+    /**
+     * Formatea una pestaña con el estilo correcto (como en la imagen)
+     */
+    formatSheetWithCorrectStyle(worksheet, sectionName, queryData, params) {
         // Configurar anchos de columna
         worksheet.columns = [
             { width: 15 }, { width: 22 }, { width: 22 }, { width: 22 },
@@ -161,21 +200,140 @@ const ExportModule = {
 
         let currentRow = 1;
 
-        // Construir Excel automáticamente
-        currentRow = this.addMainTitle(worksheet, currentRow);
-        worksheet.views = [{ state: 'frozen', ySplit: 2 }];
-        currentRow = await this.addUniversosSection(worksheet, currentRow, queries.universos, params);
-        currentRow = await this.addAgrupadosSection(worksheet, currentRow, queries.agrupados, params);
-        currentRow = await this.addMinusSection(worksheet, currentRow, queries.minus1, queries.minus2, params);
+        // Título principal (como en la imagen)
+        worksheet.mergeCells('B1:K1');
+        const headerCell = worksheet.getCell('B1');
+        headerCell.value = 'Generador de Queries de Ratificación v2';
+        headerCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+        headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF800080' } };
+        headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        currentRow = 3;
 
-        // Generar archivo y descargar
-        const filename = this.generateAutoFilename(params);
-        const buffer = await workbook.xlsx.writeBuffer();
-        this.downloadExcelBuffer(buffer, filename);
+        // Sección (UNIVERSOS, AGRUPADOS, MINUS)
+        const sectionCell = worksheet.getCell(`A${currentRow}`);
+        sectionCell.value = sectionName;
+        sectionCell.font = { bold: true, size: 14 };
+        currentRow++;
 
-        if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
-            UIModule.showNotification(`Excel generado automáticamente: ${filename}`, 'success', 5000);
+        // Código
+        const codigoCell = worksheet.getCell(`A${currentRow}`);
+        codigoCell.value = 'Código';
+        codigoCell.font = { bold: true };
+        currentRow++;
+
+        // Query SQL con formato azul oscuro
+        if (queryData && queryData.sql) {
+            const queryCell = worksheet.getCell(`B${currentRow}`);
+            queryCell.value = queryData.sql;
+            queryCell.font = { 
+                name: 'Consolas', 
+                size: 10, 
+                color: { argb: 'FFFFFFFF' } 
+            };
+            queryCell.fill = { 
+                type: 'pattern', 
+                pattern: 'solid', 
+                fgColor: { argb: 'FF1F4E79' } 
+            };
+            queryCell.alignment = { 
+                horizontal: 'left', 
+                vertical: 'top', 
+                wrapText: true 
+            };
+            
+            // Merge para el área del query
+            worksheet.mergeCells(`B${currentRow}:K${currentRow + 20}`);
         }
+        currentRow += 22;
+
+        // Resultado
+        const resultadoCell = worksheet.getCell(`A${currentRow}`);
+        resultadoCell.value = 'Resultado';
+        resultadoCell.font = { bold: true };
+        currentRow++;
+
+        // Tabla de resultados con formato azul oscuro
+        if (queryData && queryData.tabla && queryData.tabla.length > 0) {
+            const headers = Object.keys(queryData.tabla[0]);
+            
+            // Headers
+            headers.forEach((header, index) => {
+                const cell = worksheet.getCell(currentRow, index + 2);
+                cell.value = header;
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { 
+                    type: 'pattern', 
+                    pattern: 'solid', 
+                    fgColor: { argb: 'FF1F4E79' } 
+                };
+                cell.alignment = { horizontal: 'center' };
+            });
+            currentRow++;
+
+            // Datos
+            queryData.tabla.forEach(row => {
+                headers.forEach((header, index) => {
+                    const cell = worksheet.getCell(currentRow, index + 2);
+                    cell.value = row[header];
+                    cell.font = { color: { argb: 'FFFFFFFF' } };
+                    cell.fill = { 
+                        type: 'pattern', 
+                        pattern: 'solid', 
+                        fgColor: { argb: 'FF1F4E79' } 
+                    };
+                    cell.alignment = { horizontal: 'center' };
+                });
+                currentRow++;
+            });
+        }
+
+        // Congelar paneles
+        worksheet.views = [{ state: 'frozen', ySplit: 2 }];
+    },
+
+    /**
+     * Crea la pestaña de resumen
+     */
+    createResumenSheet(worksheet, params) {
+        // Configurar anchos de columna
+        worksheet.columns = [
+            { width: 15 }, { width: 22 }, { width: 22 }, { width: 22 },
+            { width: 22 }, { width: 22 }, { width: 22 }, { width: 22 },
+            { width: 22 }, { width: 22 }, { width: 22 }
+        ];
+
+        let currentRow = 1;
+
+        // Título principal
+        worksheet.mergeCells('B1:K1');
+        const headerCell = worksheet.getCell('B1');
+        headerCell.value = 'Resumen del Cuadre DDV vs EDV';
+        headerCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+        headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF800080' } };
+        headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+        currentRow = 3;
+
+        // Información del cuadre
+        const infoData = [
+            ['Tabla:', params.tabla || 'No especificada'],
+            ['Períodos:', params.periodos ? params.periodos.join(', ') : 'No especificados'],
+            ['Fecha de generación:', new Date().toLocaleString()],
+            ['Estado:', 'Completado']
+        ];
+
+        infoData.forEach(([label, value]) => {
+            const labelCell = worksheet.getCell(`A${currentRow}`);
+            labelCell.value = label;
+            labelCell.font = { bold: true };
+            
+            const valueCell = worksheet.getCell(`B${currentRow}`);
+            valueCell.value = value;
+            
+            currentRow++;
+        });
+
+        // Congelar paneles
+        worksheet.views = [{ state: 'frozen', ySplit: 2 }];
     },
 
     /**
@@ -671,6 +829,7 @@ const ExportModule = {
      */
     async insertGenericContent(workbook, data) {
         console.log('Iniciando inserción genérica de contenido...');
+        let totalInserted = 0;
         
         for (const worksheet of workbook.worksheets) {
             try {
@@ -683,17 +842,85 @@ const ExportModule = {
                     console.log(`Encontrados ${insertionPoints.length} puntos de inserción en ${worksheet.name}`);
                     
                     // Insertar contenido en los puntos encontrados
-                    await this.insertAtGenericPoints(worksheet, insertionPoints, data);
+                    const inserted = await this.insertAtGenericPoints(worksheet, insertionPoints, data);
+                    totalInserted += inserted;
                 } else {
                     // Si no hay puntos de inserción, agregar al final
                     console.log(`No se encontraron puntos de inserción, agregando al final de ${worksheet.name}`);
-                    await this.insertAtEnd(worksheet, data);
+                    const inserted = await this.insertAtEnd(worksheet, data);
+                    totalInserted += inserted;
                 }
                 
             } catch (error) {
                 console.warn(`Error en inserción genérica para ${worksheet.name}:`, error.message);
             }
         }
+        
+        return { inserted: totalInserted };
+    },
+
+    /**
+     * Crea un Excel básico como último recurso
+     */
+    async createBasicExcel(workbook, data) {
+        console.log('Creando Excel básico como último recurso...');
+        
+        // Limpiar todas las pestañas existentes
+        workbook.worksheets.forEach(worksheet => {
+            worksheet.eachRow((row, rowNumber) => {
+                row.eachCell((cell, colNumber) => {
+                    cell.value = '';
+                });
+            });
+        });
+        
+        // Usar la primera pestaña para crear contenido básico
+        const firstSheet = workbook.worksheets[0];
+        if (firstSheet) {
+            firstSheet.name = 'Cuadre DDV vs EDV';
+            
+            // Aplicar formato básico
+            this.formatSheetWithCorrectStyle(firstSheet, 'UNIVERSOS', data.universos, {});
+            
+            // Agregar contenido de agrupados y minus en la misma pestaña
+            let currentRow = 30;
+            
+            if (data.agrupados) {
+                const agrupadosCell = firstSheet.getCell(`A${currentRow}`);
+                agrupadosCell.value = 'AGRUPADOS';
+                agrupadosCell.font = { bold: true, size: 14 };
+                currentRow += 2;
+                
+                if (data.agrupados.sql) {
+                    const queryCell = firstSheet.getCell(`B${currentRow}`);
+                    queryCell.value = data.agrupados.sql;
+                    queryCell.font = { name: 'Consolas', size: 10, color: { argb: 'FFFFFFFF' } };
+                    queryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+                    queryCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+                    firstSheet.mergeCells(`B${currentRow}:K${currentRow + 20}`);
+                }
+            }
+            
+            currentRow += 25;
+            
+            if (data.minus1) {
+                const minusCell = firstSheet.getCell(`A${currentRow}`);
+                minusCell.value = 'MINUS';
+                minusCell.font = { bold: true, size: 14 };
+                currentRow += 2;
+                
+                if (data.minus1.sql) {
+                    const queryCell = firstSheet.getCell(`B${currentRow}`);
+                    queryCell.value = data.minus1.sql;
+                    queryCell.font = { name: 'Consolas', size: 10, color: { argb: 'FFFFFFFF' } };
+                    queryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+                    queryCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+                    firstSheet.mergeCells(`B${currentRow}:K${currentRow + 20}`);
+                }
+            }
+        }
+        
+        console.log('Excel básico creado exitosamente');
     },
 
     /**
@@ -872,6 +1099,7 @@ const ExportModule = {
             
             // Insertar contenido después de la última fila
             const insertRow = lastRow + 2;
+            let insertedCount = 0;
             
             // Insertar queries
             if (data.sqlUniv) {
@@ -879,6 +1107,7 @@ const ExportModule = {
                 cell.value = 'QUERY UNIVERSOS:\n' + data.sqlUniv;
                 this.applySQLCellStyle(cell);
                 worksheet.mergeCells(insertRow, 1, insertRow, 10);
+                insertedCount++;
             }
             
             if (data.sqlAgr) {
@@ -886,6 +1115,7 @@ const ExportModule = {
                 cell.value = 'QUERY AGRUPADOS:\n' + data.sqlAgr;
                 this.applySQLCellStyle(cell);
                 worksheet.mergeCells(insertRow + 5, 1, insertRow + 5, 10);
+                insertedCount++;
             }
             
             if (data.sqlMinus) {
@@ -893,12 +1123,15 @@ const ExportModule = {
                 cell.value = 'QUERY MINUS:\n' + data.sqlMinus;
                 this.applySQLCellStyle(cell);
                 worksheet.mergeCells(insertRow + 10, 1, insertRow + 10, 10);
+                insertedCount++;
             }
             
-            console.log(`Contenido insertado al final de ${worksheet.name} en fila ${insertRow}`);
+            console.log(`Contenido insertado al final de ${worksheet.name} en fila ${insertRow} (${insertedCount} elementos)`);
+            return insertedCount;
             
         } catch (error) {
             console.warn(`Error insertando al final de ${worksheet.name}:`, error.message);
+            return 0;
         }
     },
 
