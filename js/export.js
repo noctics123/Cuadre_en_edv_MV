@@ -210,6 +210,9 @@ const ExportModule = {
                         // Validar template
                         const validationResult = await this.validateTemplate();
                         
+                        // Analizar contenido del template
+                        const contentAnalysis = await this.analyzeTemplateContent();
+                        
                         // Mostrar información del template
                         if (templateInfo) {
                             const sheetAnalysis = this.analyzeSheets(validationResult.sheets);
@@ -231,6 +234,18 @@ const ExportModule = {
                                             <span class="label">Pestañas compatibles:</span>
                                             <span class="value">${sheetAnalysis.compatibleSheets.join(', ') || 'Ninguna detectada'}</span>
                                         </div>
+                                        ${contentAnalysis && contentAnalysis.tableName ? `
+                                        <div class="info-item">
+                                            <span class="label">Tabla detectada:</span>
+                                            <span class="value">${contentAnalysis.tableName}</span>
+                                        </div>
+                                        ` : ''}
+                                        ${contentAnalysis && contentAnalysis.periods.length > 0 ? `
+                                        <div class="info-item">
+                                            <span class="label">Períodos detectados:</span>
+                                            <span class="value">${contentAnalysis.periods.join(', ')}</span>
+                                        </div>
+                                        ` : ''}
                                         <div class="info-item">
                                             <span class="label">Anclas detectadas:</span>
                                             <span class="value">${validationResult.anchors} nombres definidos</span>
@@ -246,6 +261,7 @@ const ExportModule = {
                                     </div>
                                     <div class="template-actions">
                                         <button class="btn btn-sm" onclick="ExportModule.previewTemplate()">👁️ Vista Previa</button>
+                                        <button class="btn btn-sm" onclick="ExportModule.analyzeTemplate()">🔍 Análisis Detallado</button>
                                         <button class="btn btn-sm btn-secondary" onclick="ExportModule.clearTemplate()">🗑️ Limpiar</button>
                                     </div>
                                 </div>
@@ -402,6 +418,132 @@ const ExportModule = {
             totalSheets: sheetNames.length,
             compatibleCount: compatibleSheets.length
         };
+    },
+
+    /**
+     * Analiza el template para extraer información de tabla y períodos
+     */
+    async analyzeTemplateContent() {
+        if (!this.templateBuffer) {
+            return null;
+        }
+
+        try {
+            const ExcelJS = await this.loadExcelJS();
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(this.templateBuffer);
+            
+            const analysis = {
+                tableName: null,
+                periods: [],
+                sheets: [],
+                placeholders: [],
+                metadata: {}
+            };
+
+            // Analizar cada pestaña
+            for (const worksheet of workbook.worksheets) {
+                const sheetAnalysis = this.analyzeWorksheet(worksheet);
+                analysis.sheets.push(sheetAnalysis);
+                analysis.placeholders.push(...sheetAnalysis.placeholders);
+            }
+
+            // Extraer información de tabla y períodos del nombre del archivo o contenido
+            analysis.tableName = this.extractTableNameFromContent(analysis);
+            analysis.periods = this.extractPeriodsFromContent(analysis);
+
+            return analysis;
+        } catch (error) {
+            console.error('Error analizando template:', error);
+            return null;
+        }
+    },
+
+    /**
+     * Analiza una pestaña específica del worksheet
+     */
+    analyzeWorksheet(worksheet) {
+        const analysis = {
+            name: worksheet.name,
+            placeholders: [],
+            content: [],
+            hasQueries: false,
+            hasTables: false
+        };
+
+        // Buscar placeholders y contenido
+        for (let row = 1; row <= Math.min(50, worksheet.rowCount); row++) {
+            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
+                const cell = worksheet.getCell(row, col);
+                const value = cell.value;
+
+                if (value && typeof value === 'string') {
+                    // Buscar placeholders
+                    const placeholderMatches = value.match(/<<[^>]+>>|{{[^}]+}}|\[[^\]]+\]/g);
+                    if (placeholderMatches) {
+                        analysis.placeholders.push(...placeholderMatches);
+                        if (value.includes('SQL')) analysis.hasQueries = true;
+                        if (value.includes('TABLA')) analysis.hasTables = true;
+                    }
+
+                    // Buscar información de tabla y períodos
+                    if (value.length > 0 && value.length < 100) {
+                        analysis.content.push({
+                            row,
+                            col,
+                            value: value.trim()
+                        });
+                    }
+                }
+            }
+        }
+
+        return analysis;
+    },
+
+    /**
+     * Extrae el nombre de la tabla del contenido del template
+     */
+    extractTableNameFromContent(analysis) {
+        // Buscar patrones de nombres de tabla
+        const tablePatterns = [
+            /HM_[A-Z_]+/gi,
+            /MATRIZ[A-Z_]*/gi,
+            /[A-Z_]{3,}_[A-Z_]+/gi
+        ];
+
+        for (const sheet of analysis.sheets) {
+            for (const item of sheet.content) {
+                for (const pattern of tablePatterns) {
+                    const match = item.value.match(pattern);
+                    if (match) {
+                        return match[0];
+                    }
+                }
+            }
+        }
+
+        return null;
+    },
+
+    /**
+     * Extrae los períodos del contenido del template
+     */
+    extractPeriodsFromContent(analysis) {
+        const periods = [];
+        const periodPattern = /20\d{4}/g; // Patrón para años YYYYMM
+
+        for (const sheet of analysis.sheets) {
+            for (const item of sheet.content) {
+                const matches = item.value.match(periodPattern);
+                if (matches) {
+                    periods.push(...matches);
+                }
+            }
+        }
+
+        // Eliminar duplicados y ordenar
+        return [...new Set(periods)].sort();
     },
 
     /**
@@ -954,6 +1096,103 @@ const ExportModule = {
         
         if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
             UIModule.showNotification('Template eliminado', 'info', 2000);
+        }
+    },
+
+    /**
+     * Análisis detallado del template cargado
+     */
+    async analyzeTemplate() {
+        if (!this.templateBuffer) {
+            alert('No hay template cargado');
+            return;
+        }
+
+        try {
+            const analysis = await this.analyzeTemplateContent();
+            if (!analysis) {
+                alert('Error analizando template');
+                return;
+            }
+
+            let analysisHTML = `
+                <div class="template-analysis">
+                    <h4>🔍 Análisis Detallado del Template</h4>
+                    
+                    <div class="analysis-section">
+                        <h5>📊 Información General</h5>
+                        <ul>
+                            <li><strong>Pestañas:</strong> ${analysis.sheets.length}</li>
+                            <li><strong>Placeholders totales:</strong> ${analysis.placeholders.length}</li>
+                            ${analysis.tableName ? `<li><strong>Tabla detectada:</strong> ${analysis.tableName}</li>` : ''}
+                            ${analysis.periods.length > 0 ? `<li><strong>Períodos detectados:</strong> ${analysis.periods.join(', ')}</li>` : ''}
+                        </ul>
+                    </div>
+
+                    <div class="analysis-section">
+                        <h5>📋 Análisis por Pestaña</h5>
+            `;
+
+            analysis.sheets.forEach(sheet => {
+                analysisHTML += `
+                    <div class="sheet-analysis">
+                        <h6>📄 ${sheet.name}</h6>
+                        <ul>
+                            <li><strong>Placeholders:</strong> ${sheet.placeholders.length}</li>
+                            <li><strong>Contiene queries:</strong> ${sheet.hasQueries ? '✅' : '❌'}</li>
+                            <li><strong>Contiene tablas:</strong> ${sheet.hasTables ? '✅' : '❌'}</li>
+                        </ul>
+                        ${sheet.placeholders.length > 0 ? `
+                            <div class="placeholders-list">
+                                <strong>Placeholders encontrados:</strong><br>
+                                ${sheet.placeholders.map(p => `<span class="placeholder-tag">${p}</span>`).join(' ')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            analysisHTML += `
+                    </div>
+
+                    <div class="analysis-section">
+                        <h5>💡 Recomendaciones</h5>
+                        <ul>
+            `;
+
+            // Generar recomendaciones
+            if (analysis.placeholders.length === 0) {
+                analysisHTML += '<li>⚠️ No se encontraron placeholders. Agrega placeholders como <<UNIVERSOS_SQL>>, <<AGRUPADOS_TABLA>>, etc.</li>';
+            } else if (analysis.placeholders.length < 4) {
+                analysisHTML += '<li>⚠️ Pocos placeholders encontrados. Se recomiendan al menos 6 placeholders para un cuadre completo.</li>';
+            } else {
+                analysisHTML += '<li>✅ Template bien estructurado con placeholders suficientes.</li>';
+            }
+
+            if (!analysis.tableName) {
+                analysisHTML += '<li>ℹ️ No se detectó nombre de tabla. Asegúrate de que el template contenga el nombre de la tabla.</li>';
+            }
+
+            if (analysis.periods.length === 0) {
+                analysisHTML += '<li>ℹ️ No se detectaron períodos. Asegúrate de que el template contenga los períodos a analizar.</li>';
+            }
+
+            analysisHTML += `
+                        </ul>
+                    </div>
+                </div>
+            `;
+
+            if (typeof UIModule !== 'undefined' && UIModule.showModal) {
+                UIModule.showModal('Análisis Detallado del Template', analysisHTML);
+            } else {
+                alert('Análisis completado. Revisa la consola para más detalles.');
+                console.log('Análisis del template:', analysis);
+            }
+
+        } catch (error) {
+            console.error('Error en análisis detallado:', error);
+            alert('Error realizando análisis detallado: ' + error.message);
         }
     },
 

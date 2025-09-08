@@ -1004,6 +1004,68 @@ select {
     justify-content: center;
 }
 
+/* Template Analysis Styles */
+.template-analysis {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.analysis-section {
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: #f8f9fa;
+}
+
+.analysis-section h5 {
+    margin: 0 0 15px 0;
+    color: var(--primary-color);
+    font-size: var(--font-size-md);
+}
+
+.analysis-section h6 {
+    margin: 0 0 10px 0;
+    color: var(--secondary-color);
+    font-size: var(--font-size-sm);
+}
+
+.analysis-section ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.analysis-section li {
+    margin: 5px 0;
+    line-height: var(--line-height-relaxed);
+}
+
+.sheet-analysis {
+    margin: 15px 0;
+    padding: 15px;
+    border: 1px solid #e9ecef;
+    border-radius: var(--border-radius-sm);
+    background: white;
+}
+
+.placeholders-list {
+    margin-top: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: var(--border-radius-sm);
+}
+
+.placeholder-tag {
+    background: var(--primary-color);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: var(--font-size-xs);
+    font-family: var(--font-mono);
+    margin: 2px;
+    display: inline-block;
+}
+
 /* Responsive adjustments for template */
 @media (max-width: 768px) {
     .template-header {
@@ -1039,5 +1101,18 @@ select {
     .preview-table td {
         max-width: 100px;
         padding: var(--spacing-xs);
+    }
+    
+    .template-analysis {
+        max-height: 60vh;
+    }
+    
+    .analysis-section {
+        padding: 10px;
+    }
+    
+    .placeholder-tag {
+        font-size: 10px;
+        padding: 1px 6px;
     }
 }
