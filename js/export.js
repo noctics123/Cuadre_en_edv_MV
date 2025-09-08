@@ -21,7 +21,19 @@ const ExportModule = {
         }
 
         try {
-            // Si hay template cargado, usar sistema de template
+            // Intentar cargar template por defecto si no hay uno cargado
+            if (!this.templateBuffer) {
+                console.log('No hay template cargado, intentando cargar template por defecto...');
+                const defaultLoaded = await this.loadDefaultTemplate();
+                
+                if (!defaultLoaded) {
+                    console.log('No se pudo cargar template por defecto, generando automáticamente...');
+                    await this.exportWithAutoGeneration(queries, params);
+                    return;
+                }
+            }
+            
+            // Usar template (por defecto o cargado manualmente)
             if (this.templateBuffer) {
                 await this.exportWithTemplate(queries, params);
             } else {
@@ -334,6 +346,99 @@ const ExportModule = {
 
         // Congelar paneles
         worksheet.views = [{ state: 'frozen', ySplit: 2 }];
+    },
+
+    /**
+     * Inicializa el template por defecto al cargar la página
+     */
+    async initializeDefaultTemplate() {
+        try {
+            console.log('Inicializando template por defecto...');
+            const loaded = await this.loadDefaultTemplate();
+            
+            if (loaded) {
+                // Actualizar la interfaz para mostrar que el template está cargado
+                this.updateTemplateUI();
+                console.log('✅ Template por defecto inicializado correctamente');
+            } else {
+                console.log('⚠️ No se pudo inicializar el template por defecto');
+            }
+        } catch (error) {
+            console.warn('Error inicializando template por defecto:', error.message);
+        }
+    },
+
+    /**
+     * Actualiza la interfaz para mostrar el template cargado
+     */
+    updateTemplateUI() {
+        const templateInfo = document.getElementById('templateInfo');
+        if (templateInfo) {
+            templateInfo.innerHTML = `
+                <div class="template-loaded">
+                    <div class="template-header">
+                        <span class="template-icon">📊</span>
+                        <div class="template-details">
+                            <strong>Template por Defecto</strong>
+                            <small>cuadre_HM_MATRIZDEMOGRAFICO_202505_202506_202507.xlsx</small>
+                        </div>
+                    </div>
+                    <div class="template-info">
+                        <div class="info-item">
+                            <span class="label">Estado:</span>
+                            <span class="value">✅ Cargado automáticamente</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Pestañas:</span>
+                            <span class="value">Universos, Agrupados, Minus</span>
+                        </div>
+                    </div>
+                    <div class="template-actions">
+                        <button class="btn btn-sm" onclick="ExportModule.previewTemplate()">👁️ Vista Previa</button>
+                        <button class="btn btn-sm" onclick="ExportModule.diagnoseTemplate()">🔧 Diagnóstico</button>
+                        <button class="btn btn-sm btn-secondary" onclick="ExportModule.clearTemplate()">🗑️ Limpiar</button>
+                    </div>
+                </div>
+            `;
+        }
+    },
+
+    /**
+     * Carga automáticamente el template por defecto
+     */
+    async loadDefaultTemplate() {
+        try {
+            console.log('Cargando template por defecto...');
+            
+            // Intentar cargar el template desde la carpeta template_xlsx
+            const response = await fetch('./template_xlsx/cuadre_HM_MATRIZDEMOGRAFICO_202505_202506_202507.xlsx');
+            
+            if (response.ok) {
+                const arrayBuffer = await response.arrayBuffer();
+                this.templateBuffer = arrayBuffer;
+                
+                // Validar template
+                const validationResult = await this.validateTemplate();
+                const contentAnalysis = await this.analyzeTemplateContent();
+                
+                console.log('✅ Template por defecto cargado exitosamente');
+                console.log('📊 Análisis:', {
+                    sheets: validationResult.sheets,
+                    anchors: validationResult.anchors,
+                    placeholders: validationResult.placeholders,
+                    tableName: contentAnalysis?.tableName,
+                    periods: contentAnalysis?.periods
+                });
+                
+                return true;
+            } else {
+                console.warn('⚠️ No se pudo cargar el template por defecto');
+                return false;
+            }
+        } catch (error) {
+            console.warn('⚠️ Error cargando template por defecto:', error.message);
+            return false;
+        }
     },
 
     /**
@@ -1119,7 +1224,7 @@ const ExportModule = {
         // Usar la primera pestaña para crear contenido básico
         const firstSheet = workbook.worksheets[0];
         if (firstSheet) {
-            firstSheet.name = 'Cuadre DDV vs EDV';
+            firstSheet.name = 'Universos';
             
             // Aplicar formato básico
             this.formatSheetWithCorrectStyle(firstSheet, 'UNIVERSOS', data.universos, {});
