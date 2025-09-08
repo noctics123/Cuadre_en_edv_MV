@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analizador de Template de Cuadre</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #0056b3;
+        }
+        .btn-success {
+            background: #28a745;
+        }
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+        .info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .analysis-result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .sheet-analysis {
+            margin: 15px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .placeholder-found {
+            background: #d4edda;
+            color: #155724;
+            padding: 5px 10px;
+            border-radius: 3px;
+            margin: 2px;
+            display: inline-block;
+            font-family: monospace;
+        }
+        .placeholder-missing {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 5px 10px;
+            border-radius: 3px;
+            margin: 2px;
+            display: inline-block;
+            font-family: monospace;
+        }
+        .recommendations {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .table-preview {
+            max-width: 100%;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .table-preview table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .table-preview th,
+        .table-preview td {
+            border: 1px solid #ddd;
+            padding: 4px 8px;
+            text-align: left;
+        }
+        .table-preview th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Analizador de Template de Cuadre</h1>
+        
+        <div class="info">
+            <h3>ℹ️ Información</h3>
+            <p>Esta herramienta analiza tu template Excel para entender su estructura y asegurar que la funcionalidad de generación de cuadre esté perfectamente alineada.</p>
+        </div>
+
+        <div style="text-align: center;">
+            <input type="file" id="templateFile" accept=".xlsx,.xls" style="display: none;">
+            <button class="btn btn-success" onclick="document.getElementById('templateFile').click()">
+                📂 Analizar Template de Cuadre
+            </button>
+        </div>
+
+        <div id="analysisResults" style="display: none;">
+            <!-- Los resultados del análisis aparecerán aquí -->
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('templateFile').addEventListener('change', analyzeTemplate);
+
+        async function analyzeTemplate(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const workbook = new ExcelJS.Workbook();
+                await workbook.xlsx.load(arrayBuffer);
+
+                const analysis = await performAnalysis(workbook);
+                displayResults(analysis);
+
+            } catch (error) {
+                console.error('Error analizando template:', error);
+                alert('Error analizando template: ' + error.message);
+            }
+        }
+
+        async function performAnalysis(workbook) {
+            const analysis = {
+                fileName: 'Template de Cuadre',
+                sheets: [],
+                totalPlaceholders: 0,
+                recommendations: [],
+                compatibility: {
+                    universos: false,
+                    agrupados: false,
+                    minus: false,
+                    cuadre: false
+                }
+            };
+
+            // Analizar cada pestaña
+            for (const worksheet of workbook.worksheets) {
+                const sheetAnalysis = analyzeSheet(worksheet);
+                analysis.sheets.push(sheetAnalysis);
+                analysis.totalPlaceholders += sheetAnalysis.placeholders.length;
+
+                // Verificar compatibilidad
+                const sheetName = worksheet.name.toLowerCase();
+                if (sheetName.includes('universo')) analysis.compatibility.universos = true;
+                if (sheetName.includes('agrupado')) analysis.compatibility.agrupados = true;
+                if (sheetName.includes('minus')) analysis.compatibility.minus = true;
+                if (sheetName.includes('cuadre') || sheetName.includes('resumen')) analysis.compatibility.cuadre = true;
+            }
+
+            // Generar recomendaciones
+            generateRecommendations(analysis);
+
+            return analysis;
+        }
+
+        function analyzeSheet(worksheet) {
+            const sheetAnalysis = {
+                name: worksheet.name,
+                rows: worksheet.rowCount,
+                columns: worksheet.columnCount,
+                placeholders: [],
+                sampleData: [],
+                hasQueries: false,
+                hasTables: false
+            };
+
+            // Buscar placeholders
+            const placeholderPatterns = [
+                /<<UNIVERSOS_SQL>>/gi,
+                /<<UNIVERSOS_TABLA>>/gi,
+                /<<AGRUPADOS_SQL>>/gi,
+                /<<AGRUPADOS_TABLA>>/gi,
+                /<<MINUS_SQL>>/gi,
+                /<<MINUS_TABLA>>/gi,
+                /{{UNIVERSOS_SQL}}/gi,
+                /{{UNIVERSOS_TABLA}}/gi,
+                /{{AGRUPADOS_SQL}}/gi,
+                /{{AGRUPADOS_TABLA}}/gi,
+                /{{MINUS_SQL}}/gi,
+                /{{MINUS_TABLA}}/gi,
+                /\[UNIVERSOS_SQL\]/gi,
+                /\[UNIVERSOS_TABLA\]/gi,
+                /\[AGRUPADOS_SQL\]/gi,
+                /\[AGRUPADOS_TABLA\]/gi,
+                /\[MINUS_SQL\]/gi,
+                /\[MINUS_TABLA\]/gi
+            ];
+
+            // Obtener muestra de datos (primeras 10 filas)
+            for (let row = 1; row <= Math.min(10, worksheet.rowCount); row++) {
+                const rowData = [];
+                for (let col = 1; col <= Math.min(10, worksheet.columnCount); col++) {
+                    const cell = worksheet.getCell(row, col);
+                    const value = cell.value || '';
+                    rowData.push(value);
+
+                    // Buscar placeholders en el contenido
+                    if (typeof value === 'string') {
+                        placeholderPatterns.forEach(pattern => {
+                            const matches = value.match(pattern);
+                            if (matches) {
+                                matches.forEach(match => {
+                                    if (!sheetAnalysis.placeholders.includes(match)) {
+                                        sheetAnalysis.placeholders.push(match);
+                                    }
+                                });
+                            }
+                        });
+                    }
+                }
+                if (rowData.some(cell => cell !== '')) {
+                    sheetAnalysis.sampleData.push(rowData);
+                }
+            }
+
+            // Determinar tipo de contenido
+            sheetAnalysis.hasQueries = sheetAnalysis.placeholders.some(p => p.includes('SQL'));
+            sheetAnalysis.hasTables = sheetAnalysis.placeholders.some(p => p.includes('TABLA'));
+
+            return sheetAnalysis;
+        }
+
+        function generateRecommendations(analysis) {
+            const recommendations = [];
+
+            // Verificar pestañas compatibles
+            if (!analysis.compatibility.cuadre && !analysis.compatibility.universos && 
+                !analysis.compatibility.agrupados && !analysis.compatibility.minus) {
+                recommendations.push({
+                    type: 'warning',
+                    message: 'No se detectaron pestañas compatibles. Asegúrate de que los nombres de pestañas contengan palabras clave como "cuadre", "universo", "agrupado", o "minus".'
+                });
+            }
+
+            // Verificar placeholders
+            if (analysis.totalPlaceholders === 0) {
+                recommendations.push({
+                    type: 'error',
+                    message: 'No se encontraron placeholders. Agrega placeholders como <<UNIVERSOS_SQL>>, <<AGRUPADOS_TABLA>>, etc.'
+                });
+            } else if (analysis.totalPlaceholders < 4) {
+                recommendations.push({
+                    type: 'warning',
+                    message: 'Se encontraron pocos placeholders. Para un cuadre completo, se recomiendan al menos 6 placeholders (3 SQL + 3 TABLA).'
+                });
+            }
+
+            // Verificar estructura
+            const hasAllTypes = analysis.sheets.some(s => s.hasQueries) && analysis.sheets.some(s => s.hasTables);
+            if (!hasAllTypes) {
+                recommendations.push({
+                    type: 'info',
+                    message: 'Se recomienda tener tanto placeholders de SQL como de TABLA para un cuadre completo.'
+                });
+            }
+
+            analysis.recommendations = recommendations;
+        }
+
+        function displayResults(analysis) {
+            const resultsDiv = document.getElementById('analysisResults');
+            resultsDiv.style.display = 'block';
+
+            let html = `
+                <div class="analysis-result">
+                    <h2>📊 Análisis del Template</h2>
+                    
+                    <h3>📋 Resumen General</h3>
+                    <ul>
+                        <li><strong>Pestañas encontradas:</strong> ${analysis.sheets.length}</li>
+                        <li><strong>Placeholders detectados:</strong> ${analysis.totalPlaceholders}</li>
+                        <li><strong>Compatibilidad:</strong> ${getCompatibilityStatus(analysis.compatibility)}</li>
+                    </ul>
+
+                    <h3>🔍 Análisis por Pestaña</h3>
+            `;
+
+            analysis.sheets.forEach(sheet => {
+                html += `
+                    <div class="sheet-analysis">
+                        <h4>📄 ${sheet.name}</h4>
+                        <p><strong>Dimensiones:</strong> ${sheet.rows} filas × ${sheet.columns} columnas</p>
+                        <p><strong>Contenido:</strong> ${getContentType(sheet)}</p>
+                        
+                        <div>
+                            <strong>Placeholders encontrados:</strong><br>
+                            ${sheet.placeholders.length > 0 ? 
+                                sheet.placeholders.map(p => `<span class="placeholder-found">${p}</span>`).join(' ') :
+                                '<span class="placeholder-missing">Ninguno</span>'
+                            }
+                        </div>
+
+                        ${sheet.sampleData.length > 0 ? `
+                            <div class="table-preview">
+                                <strong>Vista previa (primeras filas):</strong>
+                                <table>
+                                    ${sheet.sampleData.map(row => 
+                                        `<tr>${row.map(cell => `<td>${cell}</td>`).join('')}</tr>`
+                                    ).join('')}
+                                </table>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            });
+
+            if (analysis.recommendations.length > 0) {
+                html += `
+                    <div class="recommendations">
+                        <h3>💡 Recomendaciones</h3>
+                        ${analysis.recommendations.map(rec => `
+                            <div style="margin: 10px 0; padding: 10px; border-radius: 5px; 
+                                        background: ${rec.type === 'error' ? '#f8d7da' : 
+                                                    rec.type === 'warning' ? '#fff3cd' : '#d1ecf1'};">
+                                <strong>${rec.type === 'error' ? '❌' : rec.type === 'warning' ? '⚠️' : 'ℹ️'}</strong> ${rec.message}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            html += `
+                    <div class="info">
+                        <h3>✅ Compatibilidad con el Sistema</h3>
+                        <p>Tu template es <strong>${analysis.totalPlaceholders > 0 ? 'compatible' : 'parcialmente compatible'}</strong> con el sistema de generación de cuadre.</p>
+                        <p>El sistema podrá insertar automáticamente las queries generadas en los placeholders correspondientes.</p>
+                    </div>
+                </div>
+            `;
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function getCompatibilityStatus(compatibility) {
+            const compatible = Object.values(compatibility).filter(Boolean).length;
+            const total = Object.keys(compatibility).length;
+            return `${compatible}/${total} pestañas compatibles`;
+        }
+
+        function getContentType(sheet) {
+            if (sheet.hasQueries && sheet.hasTables) {
+                return 'Queries y Tablas';
+            } else if (sheet.hasQueries) {
+                return 'Solo Queries';
+            } else if (sheet.hasTables) {
+                return 'Solo Tablas';
+            } else {
+                return 'Sin placeholders detectados';
+            }
+        }
+    </script>
+</body>
+</html>
