@@ -25,6 +25,9 @@ const App = {
             // Cargar datos iniciales
             this.loadInitialData();
             
+            // Inicializar template por defecto
+            await this.initializeDefaultTemplate();
+            
             // Configurar manejo global de errores
             this.setupGlobalErrorHandling();
             
@@ -82,6 +85,18 @@ const App = {
                 await module.init();
                 console.log(`✅ Módulo ${moduleName} inicializado`);
             }
+        }
+    },
+
+    /**
+     * Inicializa el template por defecto
+     */
+    async initializeDefaultTemplate() {
+        try {
+            console.log('Inicializando template por defecto...');
+            await ExportModule.initializeDefaultTemplate();
+        } catch (error) {
+            console.warn('Error inicializando template por defecto:', error.message);
         }
     },
 
