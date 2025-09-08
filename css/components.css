@@ -1005,7 +1005,8 @@ select {
 }
 
 /* Template Analysis Styles */
-.template-analysis {
+.template-analysis,
+.template-diagnosis {
     max-height: 70vh;
     overflow-y: auto;
 }
@@ -1062,6 +1063,41 @@ select {
     border-radius: 12px;
     font-size: var(--font-size-xs);
     font-family: var(--font-mono);
+    margin: 2px;
+    display: inline-block;
+}
+
+/* Diagnosis Styles */
+.diagnosis-section {
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: #f8f9fa;
+}
+
+.worksheet-diagnosis {
+    margin: 15px 0;
+    padding: 15px;
+    border: 1px solid #e9ecef;
+    border-radius: var(--border-radius-sm);
+    background: white;
+}
+
+.sample-content {
+    margin-top: 10px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-sm);
+}
+
+.content-item {
+    background: #e9ecef;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
     margin: 2px;
     display: inline-block;
 }

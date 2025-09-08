@@ -120,7 +120,10 @@ const ExportModule = {
         }
 
         if (processedSheets.length === 0) {
-            throw new Error('No se pudo procesar ninguna pestaña del template');
+            // Si no se procesó ninguna pestaña, intentar inserción genérica
+            console.warn('No se encontraron placeholders específicos, intentando inserción genérica...');
+            await this.insertGenericContent(workbook, data);
+            processedSheets.push('Inserción genérica');
         }
 
         // Generar archivo y descargar
@@ -262,6 +265,7 @@ const ExportModule = {
                                     <div class="template-actions">
                                         <button class="btn btn-sm" onclick="ExportModule.previewTemplate()">👁️ Vista Previa</button>
                                         <button class="btn btn-sm" onclick="ExportModule.analyzeTemplate()">🔍 Análisis Detallado</button>
+                                        <button class="btn btn-sm" onclick="ExportModule.diagnoseTemplate()">🔧 Diagnóstico</button>
                                         <button class="btn btn-sm btn-secondary" onclick="ExportModule.clearTemplate()">🗑️ Limpiar</button>
                                     </div>
                                 </div>
@@ -347,8 +351,9 @@ const ExportModule = {
             });
         }
 
-        // Verificar placeholders
+        // Verificar placeholders - Lista más amplia y flexible
         const placeholders = [
+            // Formatos principales
             '<<UNIVERSOS_SQL>>', '<<UNIVERSOS_TABLA>>',
             '<<AGRUPADOS_SQL>>', '<<AGRUPADOS_TABLA>>',
             '<<MINUS_SQL>>', '<<MINUS_TABLA>>',
@@ -363,7 +368,22 @@ const ExportModule = {
             // Variaciones adicionales
             '[UNIVERSOS_SQL]', '[UNIVERSOS_TABLA]',
             '[AGRUPADOS_SQL]', '[AGRUPADOS_TABLA]',
-            '[MINUS_SQL]', '[MINUS_TABLA]'
+            '[MINUS_SQL]', '[MINUS_TABLA]',
+            // Variaciones con paréntesis y porcentajes
+            '(UNIVERSOS_SQL)', '(UNIVERSOS_TABLA)',
+            '(AGRUPADOS_SQL)', '(AGRUPADOS_TABLA)',
+            '(MINUS_SQL)', '(MINUS_TABLA)',
+            '%UNIVERSOS_SQL%', '%UNIVERSOS_TABLA%',
+            '%AGRUPADOS_SQL%', '%AGRUPADOS_TABLA%',
+            '%MINUS_SQL%', '%MINUS_TABLA%',
+            // Variaciones sin delimitadores (solo texto)
+            'UNIVERSOS_SQL', 'UNIVERSOS_TABLA',
+            'AGRUPADOS_SQL', 'AGRUPADOS_TABLA',
+            'MINUS_SQL', 'MINUS_TABLA',
+            // Variaciones en español
+            'UNIVERSOS_QUERY', 'UNIVERSOS_RESULTADO',
+            'AGRUPADOS_QUERY', 'AGRUPADOS_RESULTADO',
+            'MINUS_QUERY', 'MINUS_RESULTADO'
         ];
 
         worksheet.eachRow((row, rowNumber) => {
@@ -644,6 +664,242 @@ const ExportModule = {
         }
 
         return insertedCount;
+    },
+
+    /**
+     * Inserción genérica de contenido cuando no se encuentran placeholders específicos
+     */
+    async insertGenericContent(workbook, data) {
+        console.log('Iniciando inserción genérica de contenido...');
+        
+        for (const worksheet of workbook.worksheets) {
+            try {
+                console.log(`Procesando pestaña: ${worksheet.name}`);
+                
+                // Buscar celdas vacías o con texto genérico donde insertar contenido
+                const insertionPoints = this.findGenericInsertionPoints(worksheet);
+                
+                if (insertionPoints.length > 0) {
+                    console.log(`Encontrados ${insertionPoints.length} puntos de inserción en ${worksheet.name}`);
+                    
+                    // Insertar contenido en los puntos encontrados
+                    await this.insertAtGenericPoints(worksheet, insertionPoints, data);
+                } else {
+                    // Si no hay puntos de inserción, agregar al final
+                    console.log(`No se encontraron puntos de inserción, agregando al final de ${worksheet.name}`);
+                    await this.insertAtEnd(worksheet, data);
+                }
+                
+            } catch (error) {
+                console.warn(`Error en inserción genérica para ${worksheet.name}:`, error.message);
+            }
+        }
+    },
+
+    /**
+     * Encuentra puntos genéricos de inserción en el worksheet
+     */
+    findGenericInsertionPoints(worksheet) {
+        const insertionPoints = [];
+        
+        // Buscar celdas que contengan texto que sugiera inserción
+        const insertionKeywords = [
+            'query', 'sql', 'consulta', 'resultado', 'tabla', 'datos',
+            'universo', 'agrupado', 'minus', 'cuadre', 'resumen',
+            'ddv', 'edv', 'comparacion', 'analisis'
+        ];
+        
+        for (let row = 1; row <= Math.min(100, worksheet.rowCount); row++) {
+            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
+                const cell = worksheet.getCell(row, col);
+                const value = cell.value;
+                
+                if (value && typeof value === 'string') {
+                    const lowerValue = value.toLowerCase();
+                    
+                    // Buscar celdas que contengan palabras clave
+                    if (insertionKeywords.some(keyword => lowerValue.includes(keyword))) {
+                        insertionPoints.push({
+                            row,
+                            col,
+                            type: 'keyword',
+                            value: value,
+                            context: this.getCellContext(worksheet, row, col)
+                        });
+                    }
+                    
+                    // Buscar celdas vacías cerca de contenido
+                    if (value.trim() === '' && this.hasNearbyContent(worksheet, row, col)) {
+                        insertionPoints.push({
+                            row,
+                            col,
+                            type: 'empty',
+                            value: '',
+                            context: this.getCellContext(worksheet, row, col)
+                        });
+                    }
+                }
+            }
+        }
+        
+        return insertionPoints;
+    },
+
+    /**
+     * Obtiene el contexto de una celda (celdas adyacentes)
+     */
+    getCellContext(worksheet, row, col) {
+        const context = [];
+        
+        // Revisar celdas adyacentes
+        for (let r = Math.max(1, row - 1); r <= Math.min(worksheet.rowCount, row + 1); r++) {
+            for (let c = Math.max(1, col - 1); c <= Math.min(worksheet.columnCount, col + 1); c++) {
+                if (r !== row || c !== col) {
+                    const cell = worksheet.getCell(r, c);
+                    if (cell.value && typeof cell.value === 'string' && cell.value.trim()) {
+                        context.push(cell.value.trim());
+                    }
+                }
+            }
+        }
+        
+        return context;
+    },
+
+    /**
+     * Verifica si hay contenido cerca de una celda
+     */
+    hasNearbyContent(worksheet, row, col) {
+        for (let r = Math.max(1, row - 2); r <= Math.min(worksheet.rowCount, row + 2); r++) {
+            for (let c = Math.max(1, col - 2); c <= Math.min(worksheet.columnCount, col + 2); c++) {
+                const cell = worksheet.getCell(r, c);
+                if (cell.value && typeof cell.value === 'string' && cell.value.trim()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    },
+
+    /**
+     * Inserta contenido en puntos genéricos encontrados
+     */
+    async insertAtGenericPoints(worksheet, insertionPoints, data) {
+        let insertedCount = 0;
+        
+        for (const point of insertionPoints.slice(0, 6)) { // Limitar a 6 inserciones
+            try {
+                // Determinar qué tipo de contenido insertar basado en el contexto
+                const contentType = this.determineContentType(point, data);
+                
+                if (contentType) {
+                    const cell = worksheet.getCell(point.row, point.col);
+                    
+                    if (contentType.type === 'sql') {
+                        cell.value = contentType.content;
+                        this.applySQLCellStyle(cell);
+                        insertedCount++;
+                    } else if (contentType.type === 'table') {
+                        // Para tablas, insertar en la celda y las siguientes
+                        cell.value = contentType.content;
+                        this.applyDataCellStyle(cell);
+                        insertedCount++;
+                    }
+                }
+            } catch (error) {
+                console.warn(`Error insertando en punto ${point.row},${point.col}:`, error.message);
+            }
+        }
+        
+        console.log(`Inserción genérica completada: ${insertedCount} elementos insertados`);
+    },
+
+    /**
+     * Determina el tipo de contenido a insertar basado en el contexto
+     */
+    determineContentType(point, data) {
+        const context = point.context.join(' ').toLowerCase();
+        
+        // Determinar tipo basado en contexto
+        if (context.includes('universo') || context.includes('universos')) {
+            if (context.includes('sql') || context.includes('query')) {
+                return { type: 'sql', content: data.sqlUniv };
+            } else if (context.includes('tabla') || context.includes('resultado')) {
+                return { type: 'table', content: 'Datos de Universos' };
+            }
+        } else if (context.includes('agrupado') || context.includes('agrupados')) {
+            if (context.includes('sql') || context.includes('query')) {
+                return { type: 'sql', content: data.sqlAgr };
+            } else if (context.includes('tabla') || context.includes('resultado')) {
+                return { type: 'table', content: 'Datos de Agrupados' };
+            }
+        } else if (context.includes('minus')) {
+            if (context.includes('sql') || context.includes('query')) {
+                return { type: 'sql', content: data.sqlMinus };
+            } else if (context.includes('tabla') || context.includes('resultado')) {
+                return { type: 'table', content: 'Datos de Minus' };
+            }
+        }
+        
+        // Fallback: insertar contenido genérico
+        if (point.type === 'empty') {
+            return { type: 'sql', content: data.sqlUniv || data.sqlAgr || data.sqlMinus };
+        }
+        
+        return null;
+    },
+
+    /**
+     * Inserta contenido al final del worksheet
+     */
+    async insertAtEnd(worksheet, data) {
+        try {
+            // Encontrar la última fila con contenido
+            let lastRow = 1;
+            for (let row = 1; row <= worksheet.rowCount; row++) {
+                let hasContent = false;
+                for (let col = 1; col <= worksheet.columnCount; col++) {
+                    const cell = worksheet.getCell(row, col);
+                    if (cell.value && cell.value.toString().trim()) {
+                        hasContent = true;
+                        break;
+                    }
+                }
+                if (hasContent) {
+                    lastRow = row;
+                }
+            }
+            
+            // Insertar contenido después de la última fila
+            const insertRow = lastRow + 2;
+            
+            // Insertar queries
+            if (data.sqlUniv) {
+                const cell = worksheet.getCell(insertRow, 1);
+                cell.value = 'QUERY UNIVERSOS:\n' + data.sqlUniv;
+                this.applySQLCellStyle(cell);
+                worksheet.mergeCells(insertRow, 1, insertRow, 10);
+            }
+            
+            if (data.sqlAgr) {
+                const cell = worksheet.getCell(insertRow + 5, 1);
+                cell.value = 'QUERY AGRUPADOS:\n' + data.sqlAgr;
+                this.applySQLCellStyle(cell);
+                worksheet.mergeCells(insertRow + 5, 1, insertRow + 5, 10);
+            }
+            
+            if (data.sqlMinus) {
+                const cell = worksheet.getCell(insertRow + 10, 1);
+                cell.value = 'QUERY MINUS:\n' + data.sqlMinus;
+                this.applySQLCellStyle(cell);
+                worksheet.mergeCells(insertRow + 10, 1, insertRow + 10, 10);
+            }
+            
+            console.log(`Contenido insertado al final de ${worksheet.name} en fila ${insertRow}`);
+            
+        } catch (error) {
+            console.warn(`Error insertando al final de ${worksheet.name}:`, error.message);
+        }
     },
 
     /**
@@ -1097,6 +1353,137 @@ const ExportModule = {
         if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
             UIModule.showNotification('Template eliminado', 'info', 2000);
         }
+    },
+
+    /**
+     * Diagnóstico completo del template para debugging
+     */
+    async diagnoseTemplate() {
+        if (!this.templateBuffer) {
+            alert('No hay template cargado');
+            return;
+        }
+
+        try {
+            const ExcelJS = await this.loadExcelJS();
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(this.templateBuffer);
+            
+            let diagnosisHTML = `
+                <div class="template-diagnosis">
+                    <h4>🔧 Diagnóstico Completo del Template</h4>
+                    
+                    <div class="diagnosis-section">
+                        <h5>📊 Información del Workbook</h5>
+                        <ul>
+                            <li><strong>Total de pestañas:</strong> ${workbook.worksheets.length}</li>
+                            <li><strong>Nombres definidos:</strong> ${workbook.definedNames ? 'Disponibles' : 'No disponibles'}</li>
+                        </ul>
+                    </div>
+
+                    <div class="diagnosis-section">
+                        <h5>📋 Análisis Detallado por Pestaña</h5>
+            `;
+
+            for (const worksheet of workbook.worksheets) {
+                const analysis = this.diagnoseWorksheet(worksheet);
+                
+                diagnosisHTML += `
+                    <div class="worksheet-diagnosis">
+                        <h6>📄 ${worksheet.name}</h6>
+                        <ul>
+                            <li><strong>Dimensiones:</strong> ${worksheet.rowCount} filas × ${worksheet.columnCount} columnas</li>
+                            <li><strong>Celdas con contenido:</strong> ${analysis.cellsWithContent}</li>
+                            <li><strong>Texto encontrado:</strong> ${analysis.textCells}</li>
+                            <li><strong>Palabras clave:</strong> ${analysis.keywordsFound.join(', ') || 'Ninguna'}</li>
+                        </ul>
+                        
+                        <div class="sample-content">
+                            <strong>Muestra de contenido (primeras 10 celdas con texto):</strong><br>
+                            ${analysis.sampleContent.map(item => 
+                                `<span class="content-item">F${item.row}C${item.col}: "${item.value}"</span>`
+                            ).join('<br>')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            diagnosisHTML += `
+                    </div>
+
+                    <div class="diagnosis-section">
+                        <h5>💡 Recomendaciones de Solución</h5>
+                        <ul>
+                            <li>Si no se encuentran placeholders, el sistema usará inserción genérica</li>
+                            <li>El contenido se insertará en celdas vacías o al final de cada pestaña</li>
+                            <li>Se mantendrá el formato original del template</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+
+            if (typeof UIModule !== 'undefined' && UIModule.showModal) {
+                UIModule.showModal('Diagnóstico del Template', diagnosisHTML);
+            } else {
+                console.log('Diagnóstico del template completado');
+            }
+
+        } catch (error) {
+            console.error('Error en diagnóstico:', error);
+            alert('Error realizando diagnóstico: ' + error.message);
+        }
+    },
+
+    /**
+     * Diagnostica una pestaña específica
+     */
+    diagnoseWorksheet(worksheet) {
+        const analysis = {
+            cellsWithContent: 0,
+            textCells: 0,
+            keywordsFound: [],
+            sampleContent: []
+        };
+
+        const keywords = [
+            'query', 'sql', 'consulta', 'resultado', 'tabla', 'datos',
+            'universo', 'agrupado', 'minus', 'cuadre', 'resumen',
+            'ddv', 'edv', 'comparacion', 'analisis'
+        ];
+
+        for (let row = 1; row <= Math.min(50, worksheet.rowCount); row++) {
+            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
+                const cell = worksheet.getCell(row, col);
+                const value = cell.value;
+
+                if (value && value.toString().trim()) {
+                    analysis.cellsWithContent++;
+                    
+                    if (typeof value === 'string') {
+                        analysis.textCells++;
+                        
+                        // Buscar palabras clave
+                        const lowerValue = value.toLowerCase();
+                        keywords.forEach(keyword => {
+                            if (lowerValue.includes(keyword) && !analysis.keywordsFound.includes(keyword)) {
+                                analysis.keywordsFound.push(keyword);
+                            }
+                        });
+                        
+                        // Agregar a muestra si no hay muchas
+                        if (analysis.sampleContent.length < 10) {
+                            analysis.sampleContent.push({
+                                row,
+                                col,
+                                value: value.substring(0, 50) + (value.length > 50 ? '...' : '')
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        return analysis;
     },
 
     /**
