@@ -1,15 +1,35 @@
 /**
  * Módulo para generación de queries de ratificación
+ * Integrado con SQLFormatter para formateo horizontal de campos
  */
 const QueryModule = {
     
     // Variables del módulo
     generatedQueries: {},
     
+    // Instancia del formateador SQL
+    sqlFormatter: null,
+    
+    /**
+     * Inicializa el formateador SQL
+     */
+    initializeSQLFormatter() {
+        if (!this.sqlFormatter) {
+            this.sqlFormatter = new SQLFormatter({
+                maxCharsPerLine: 30000,
+                excelMaxChars: 32500,
+                indentSize: 4
+            });
+        }
+    },
+    
     /**
      * Genera todos los queries de ratificación
      */
     generateAllQueries() {
+        // Inicializar el formateador SQL
+        this.initializeSQLFormatter();
+        
         // Validar requisitos previos
         const validation = this.validateRequirements();
         if (!validation.isValid) {
@@ -21,13 +41,20 @@ const QueryModule = {
             const params = ParametersModule.getCurrentParameters();
             const tableStructure = TableAnalysisModule.getTableStructure();
             
-            // Generar cada tipo de query
-            this.generatedQueries = {
+            // Generar cada tipo de query (sin formateo inicialmente)
+            const rawQueries = {
                 universos: this.generateUniversosQuery(params),
                 agrupados: this.generateAgrupadosQuery(params, tableStructure),
                 minus1: this.generateMinusQuery(params, tableStructure, 'edv_minus_ddv'),
                 minus2: this.generateMinusQuery(params, tableStructure, 'ddv_minus_edv')
             };
+            
+            // Aplicar formateo horizontal a cada query
+            this.generatedQueries = {};
+            for (const [key, rawQuery] of Object.entries(rawQueries)) {
+                const formatResult = this.sqlFormatter.formatSQL(rawQuery, true); // true para Excel
+                this.generatedQueries[key] = formatResult.success ? formatResult.query : rawQuery;
+            }
             
             // Mostrar queries en la interfaz
             this.displayQueries();
@@ -115,12 +142,12 @@ order by edv.codmes;`;
         
         // Generar campos para EDV
         const selectFieldsEDV = tableStructure.map(field => 
-            `${field.aggregateFunction}(${field.edvName}) as ${field.columnName}_${field.aggregateFunction}`
+            `${field.aggregateFunction}(${field.edvName})`
         ).join(',\n    ');
         
         // Generar campos para DDV
         const selectFieldsDDV = tableStructure.map(field => 
-            `${field.aggregateFunction}(${field.columnName}) as ${field.columnName}_${field.aggregateFunction}`
+            `${field.aggregateFunction}(${field.columnName})`
         ).join(',\n    ');
         
         return `-- QUERY DE AGRUPADOS

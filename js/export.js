@@ -21,19 +21,7 @@ const ExportModule = {
         }
 
         try {
-            // Intentar cargar template por defecto si no hay uno cargado
-            if (!this.templateBuffer) {
-                console.log('No hay template cargado, intentando cargar template por defecto...');
-                const defaultLoaded = await this.loadDefaultTemplate();
-                
-                if (!defaultLoaded) {
-                    console.log('No se pudo cargar template por defecto, generando automáticamente...');
-                    await this.exportWithAutoGeneration(queries, params);
-                    return;
-                }
-            }
-            
-            // Usar template (por defecto o cargado manualmente)
+            // Si hay template cargado, usar sistema de template
             if (this.templateBuffer) {
                 await this.exportWithTemplate(queries, params);
             } else {
@@ -47,7 +35,7 @@ const ExportModule = {
     },
 
     /**
-     * Exporta usando template cargado con soporte para múltiples pestañas
+     * Exporta usando template cargado
      */
     async exportWithTemplate(queries, params) {
         const ExcelJS = await this.loadExcelJS();
@@ -56,6 +44,12 @@ const ExportModule = {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(this.templateBuffer);
         
+        // Buscar la pestaña "Cuadre"
+        const worksheet = workbook.getWorksheet('Cuadre') || workbook.worksheets[0];
+        if (!worksheet) {
+            throw new Error('No se encontró la pestaña "Cuadre" en el template');
+        }
+
         // Preparar datos para inserción
         const data = {
             sqlUniv: queries.universos,
@@ -66,85 +60,8 @@ const ExportModule = {
             tablaMinus: this.generateMinusTable(params)
         };
 
-        // Procesar cada pestaña del template
-        const processedSheets = [];
-        
-        for (const worksheet of workbook.worksheets) {
-            const sheetName = worksheet.name.toLowerCase();
-            
-            // Determinar qué datos insertar según el nombre de la pestaña
-            let sheetData = {};
-            
-            if (sheetName.includes('universo') || sheetName.includes('universos')) {
-                sheetData = {
-                    sql: data.sqlUniv,
-                    tabla: data.tablaUniv,
-                    tipo: 'universos'
-                };
-            } else if (sheetName.includes('agrupado') || sheetName.includes('agrupados')) {
-                sheetData = {
-                    sql: data.sqlAgr,
-                    tabla: data.tablaAgr,
-                    tipo: 'agrupados'
-                };
-            } else if (sheetName.includes('minus')) {
-                sheetData = {
-                    sql: data.sqlMinus,
-                    tabla: data.tablaMinus,
-                    tipo: 'minus'
-                };
-            } else if (sheetName.includes('cuadre') || sheetName.includes('resumen')) {
-                // Pestaña principal con todos los datos
-                sheetData = {
-                    sqlUniv: data.sqlUniv,
-                    sqlAgr: data.sqlAgr,
-                    sqlMinus: data.sqlMinus,
-                    tablaUniv: data.tablaUniv,
-                    tablaAgr: data.tablaAgr,
-                    tablaMinus: data.tablaMinus,
-                    tipo: 'completo'
-                };
-            } else {
-                // Pestaña genérica - intentar insertar todos los datos
-                sheetData = {
-                    sqlUniv: data.sqlUniv,
-                    sqlAgr: data.sqlAgr,
-                    sqlMinus: data.sqlMinus,
-                    tablaUniv: data.tablaUniv,
-                    tablaAgr: data.tablaAgr,
-                    tablaMinus: data.tablaMinus,
-                    tipo: 'completo'
-                };
-            }
-
-            // Insertar contenido en la pestaña
-            try {
-                const insertResult = await this.insertContentIntoTemplate(worksheet, sheetData);
-                if (insertResult && insertResult.inserted > 0) {
-                    processedSheets.push(worksheet.name);
-                    console.log(`✅ Procesada pestaña: ${worksheet.name} (${sheetData.tipo}) - ${insertResult.inserted} elementos insertados`);
-                } else {
-                    console.log(`ℹ️ Pestaña ${worksheet.name}: No se encontraron placeholders para insertar`);
-                }
-            } catch (error) {
-                console.warn(`⚠️ Error procesando pestaña ${worksheet.name}:`, error.message);
-            }
-        }
-
-        if (processedSheets.length === 0) {
-            // Si no se procesó ninguna pestaña, intentar inserción genérica
-            console.warn('No se encontraron placeholders específicos, intentando inserción genérica...');
-            const genericResult = await this.insertGenericContent(workbook, data);
-            if (genericResult && genericResult.inserted > 0) {
-                processedSheets.push('Inserción genérica');
-                console.log(`✅ Inserción genérica completada: ${genericResult.inserted} elementos insertados`);
-            } else {
-                console.warn('⚠️ No se pudo insertar contenido genérico, generando Excel básico...');
-                // Como último recurso, crear un Excel básico
-                await this.createBasicExcel(workbook, data);
-                processedSheets.push('Excel básico generado');
-            }
-        }
+        // Insertar contenido usando nombres definidos o fallback
+        await this.insertContentIntoTemplate(worksheet, data);
 
         // Generar archivo y descargar
         const filename = this.generateTemplateFilename(params);
@@ -152,42 +69,45 @@ const ExportModule = {
         this.downloadExcelBuffer(buffer, filename);
 
         if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
-            UIModule.showNotification(
-                `Excel generado con template: ${filename} (${processedSheets.length} pestañas procesadas)`, 
-                'success', 
-                5000
-            );
+            UIModule.showNotification(`Excel generado con template: ${filename}`, 'success', 5000);
         }
     },
 
     /**
-     * Exporta con generación automática usando ExcelJS
+     * Exporta usando plantilla base con 3 pestañas predefinidas
      */
     async exportWithAutoGeneration(queries, params) {
         const ExcelJS = await this.loadExcelJS();
         
-        // Crear workbook con pestañas separadas
-        const workbook = new ExcelJS.Workbook();
+        // Cargar plantilla base desde template_xlsx
+        const templatePath = 'template_xlsx/cuadre_HM_MATRIZDEMOGRAFICO_202505_202506_202507.xlsx';
+        let workbook;
         
-        // Crear pestañas separadas para cada sección (como en las imágenes)
-        const universosSheet = workbook.addWorksheet('Universos', {
-            pageSetup: { paperSize: 9, orientation: 'landscape' }
-        });
-        const agrupadosSheet = workbook.addWorksheet('Agrupados', {
-            pageSetup: { paperSize: 9, orientation: 'landscape' }
-        });
-        const minusSheet = workbook.addWorksheet('Minus', {
-            pageSetup: { paperSize: 9, orientation: 'landscape' }
-        });
-        const resumenSheet = workbook.addWorksheet('Resumen', {
-            pageSetup: { paperSize: 9, orientation: 'landscape' }
-        });
+        try {
+            // Intentar cargar plantilla base
+            const templateResponse = await fetch(templatePath);
+            if (templateResponse.ok) {
+                const templateBuffer = await templateResponse.arrayBuffer();
+                workbook = new ExcelJS.Workbook();
+                await workbook.xlsx.load(templateBuffer);
+                
+                console.log('📋 Plantilla base cargada correctamente');
+            } else {
+                throw new Error('No se pudo cargar la plantilla');
+            }
+        } catch (error) {
+            console.warn('⚠️ No se pudo cargar plantilla, creando desde cero:', error.message);
+            // Fallback: crear workbook desde cero como antes
+            workbook = new ExcelJS.Workbook();
+            await this.createUniversosWorksheet(workbook, queries.universos, params);
+            await this.createAgrupadosWorksheet(workbook, queries.agrupados, params);
+            await this.createMinusWorksheet(workbook, queries.minus1, queries.minus2, params);
+        }
 
-        // Formatear cada pestaña con el formato correcto
-        this.formatSheetWithCorrectStyle(universosSheet, 'UNIVERSOS', queries.universos, params);
-        this.formatSheetWithCorrectStyle(agrupadosSheet, 'AGRUPADOS', queries.agrupados, params);
-        this.formatSheetWithCorrectStyle(minusSheet, 'MINUS', queries.minus1, params);
-        this.createResumenSheet(resumenSheet, params);
+        if (workbook.worksheets.length > 0) {
+            // Si se cargó la plantilla, insertar queries en las pestañas existentes
+            await this.insertQueriesIntoTemplate(workbook, queries, params);
+        }
 
         // Generar archivo y descargar
         const filename = this.generateAutoFilename(params);
@@ -195,254 +115,12 @@ const ExportModule = {
         this.downloadExcelBuffer(buffer, filename);
 
         if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
-            UIModule.showNotification(`Excel generado automáticamente con formato correcto: ${filename}`, 'success', 5000);
+            UIModule.showNotification(`Excel generado con plantilla: ${filename}`, 'success', 5000);
         }
     },
 
     /**
-     * Formatea una pestaña con el estilo correcto (como en la imagen)
-     */
-    formatSheetWithCorrectStyle(worksheet, sectionName, queryData, params) {
-        // Configurar anchos de columna
-        worksheet.columns = [
-            { width: 15 }, { width: 22 }, { width: 22 }, { width: 22 },
-            { width: 22 }, { width: 22 }, { width: 22 }, { width: 22 },
-            { width: 22 }, { width: 22 }, { width: 22 }
-        ];
-
-        let currentRow = 1;
-
-        // Título principal (como en la imagen)
-        worksheet.mergeCells('B1:K1');
-        const headerCell = worksheet.getCell('B1');
-        headerCell.value = 'Generador de Queries de Ratificación v2';
-        headerCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
-        headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF800080' } };
-        headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        currentRow = 2;
-
-        // Sección (UNIVERSOS, AGRUPADOS, MINUS) - como en las imágenes
-        const sectionCell = worksheet.getCell(`B${currentRow}`);
-        sectionCell.value = sectionName;
-        sectionCell.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
-        currentRow += 2;
-
-        // Código
-        const codigoCell = worksheet.getCell(`B${currentRow}`);
-        codigoCell.value = 'Codigo';
-        codigoCell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        currentRow++;
-
-        // Query SQL con formato azul oscuro
-        if (queryData && queryData.sql) {
-            const queryCell = worksheet.getCell(`B${currentRow}`);
-            queryCell.value = queryData.sql;
-            queryCell.font = { 
-                name: 'Consolas', 
-                size: 10, 
-                color: { argb: 'FFFFFFFF' } 
-            };
-            queryCell.fill = { 
-                type: 'pattern', 
-                pattern: 'solid', 
-                fgColor: { argb: 'FF1F4E79' } 
-            };
-            queryCell.alignment = { 
-                horizontal: 'left', 
-                vertical: 'top', 
-                wrapText: true 
-            };
-            
-            // Merge para el área del query
-            worksheet.mergeCells(`B${currentRow}:K${currentRow + 20}`);
-        }
-        currentRow += 22;
-
-        // Resultado
-        const resultadoCell = worksheet.getCell(`B${currentRow}`);
-        resultadoCell.value = 'Resultado';
-        resultadoCell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        currentRow++;
-
-        // Tabla de resultados con formato azul oscuro
-        if (queryData && queryData.tabla && queryData.tabla.length > 0) {
-            const headers = Object.keys(queryData.tabla[0]);
-            
-            // Headers
-            headers.forEach((header, index) => {
-                const cell = worksheet.getCell(currentRow, index + 2);
-                cell.value = header;
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                cell.fill = { 
-                    type: 'pattern', 
-                    pattern: 'solid', 
-                    fgColor: { argb: 'FF1F4E79' } 
-                };
-                cell.alignment = { horizontal: 'center' };
-            });
-            currentRow++;
-
-            // Datos
-            queryData.tabla.forEach(row => {
-                headers.forEach((header, index) => {
-                    const cell = worksheet.getCell(currentRow, index + 2);
-                    cell.value = row[header];
-                    cell.font = { color: { argb: 'FFFFFFFF' } };
-                    cell.fill = { 
-                        type: 'pattern', 
-                        pattern: 'solid', 
-                        fgColor: { argb: 'FF1F4E79' } 
-                    };
-                    cell.alignment = { horizontal: 'center' };
-                });
-                currentRow++;
-            });
-        }
-
-        // Congelar paneles
-        worksheet.views = [{ state: 'frozen', ySplit: 2 }];
-    },
-
-    /**
-     * Crea la pestaña de resumen
-     */
-    createResumenSheet(worksheet, params) {
-        // Configurar anchos de columna
-        worksheet.columns = [
-            { width: 15 }, { width: 22 }, { width: 22 }, { width: 22 },
-            { width: 22 }, { width: 22 }, { width: 22 }, { width: 22 },
-            { width: 22 }, { width: 22 }, { width: 22 }
-        ];
-
-        let currentRow = 1;
-
-        // Título principal
-        worksheet.mergeCells('B1:K1');
-        const headerCell = worksheet.getCell('B1');
-        headerCell.value = 'Resumen del Cuadre DDV vs EDV';
-        headerCell.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
-        headerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF800080' } };
-        headerCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        currentRow = 3;
-
-        // Información del cuadre
-        const infoData = [
-            ['Tabla:', params.tabla || 'No especificada'],
-            ['Períodos:', params.periodos ? params.periodos.join(', ') : 'No especificados'],
-            ['Fecha de generación:', new Date().toLocaleString()],
-            ['Estado:', 'Completado']
-        ];
-
-        infoData.forEach(([label, value]) => {
-            const labelCell = worksheet.getCell(`A${currentRow}`);
-            labelCell.value = label;
-            labelCell.font = { bold: true };
-            
-            const valueCell = worksheet.getCell(`B${currentRow}`);
-            valueCell.value = value;
-            
-            currentRow++;
-        });
-
-        // Congelar paneles
-        worksheet.views = [{ state: 'frozen', ySplit: 2 }];
-    },
-
-    /**
-     * Inicializa el template por defecto al cargar la página
-     */
-    async initializeDefaultTemplate() {
-        try {
-            console.log('Inicializando template por defecto...');
-            const loaded = await this.loadDefaultTemplate();
-            
-            if (loaded) {
-                // Actualizar la interfaz para mostrar que el template está cargado
-                this.updateTemplateUI();
-                console.log('✅ Template por defecto inicializado correctamente');
-            } else {
-                console.log('⚠️ No se pudo inicializar el template por defecto');
-            }
-        } catch (error) {
-            console.warn('Error inicializando template por defecto:', error.message);
-        }
-    },
-
-    /**
-     * Actualiza la interfaz para mostrar el template cargado
-     */
-    updateTemplateUI() {
-        const templateInfo = document.getElementById('templateInfo');
-        if (templateInfo) {
-            templateInfo.innerHTML = `
-                <div class="template-loaded">
-                    <div class="template-header">
-                        <span class="template-icon">📊</span>
-                        <div class="template-details">
-                            <strong>Template por Defecto</strong>
-                            <small>cuadre_HM_MATRIZDEMOGRAFICO_202505_202506_202507.xlsx</small>
-                        </div>
-                    </div>
-                    <div class="template-info">
-                        <div class="info-item">
-                            <span class="label">Estado:</span>
-                            <span class="value">✅ Cargado automáticamente</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Pestañas:</span>
-                            <span class="value">Universos, Agrupados, Minus</span>
-                        </div>
-                    </div>
-                    <div class="template-actions">
-                        <button class="btn btn-sm" onclick="ExportModule.previewTemplate()">👁️ Vista Previa</button>
-                        <button class="btn btn-sm" onclick="ExportModule.diagnoseTemplate()">🔧 Diagnóstico</button>
-                        <button class="btn btn-sm btn-secondary" onclick="ExportModule.clearTemplate()">🗑️ Limpiar</button>
-                    </div>
-                </div>
-            `;
-        }
-    },
-
-    /**
-     * Carga automáticamente el template por defecto
-     */
-    async loadDefaultTemplate() {
-        try {
-            console.log('Cargando template por defecto...');
-            
-            // Intentar cargar el template desde la carpeta template_xlsx
-            const response = await fetch('./template_xlsx/cuadre_HM_MATRIZDEMOGRAFICO_202505_202506_202507.xlsx');
-            
-            if (response.ok) {
-                const arrayBuffer = await response.arrayBuffer();
-                this.templateBuffer = arrayBuffer;
-                
-                // Validar template
-                const validationResult = await this.validateTemplate();
-                const contentAnalysis = await this.analyzeTemplateContent();
-                
-                console.log('✅ Template por defecto cargado exitosamente');
-                console.log('📊 Análisis:', {
-                    sheets: validationResult.sheets,
-                    anchors: validationResult.anchors,
-                    placeholders: validationResult.placeholders,
-                    tableName: contentAnalysis?.tableName,
-                    periods: contentAnalysis?.periods
-                });
-                
-                return true;
-            } else {
-                console.warn('⚠️ No se pudo cargar el template por defecto');
-                return false;
-            }
-        } catch (error) {
-            console.warn('⚠️ Error cargando template por defecto:', error.message);
-            return false;
-        }
-    },
-
-    /**
-     * Cargar template Excel con validación mejorada
+     * Cargar template Excel
      */
     async loadTemplate() {
         try {
@@ -459,78 +137,17 @@ const ExportModule = {
                     }
 
                     try {
-                        // Mostrar loading
-                        const templateInfo = document.getElementById('templateInfo');
-                        if (templateInfo) {
-                            templateInfo.innerHTML = `
-                                <div class="template-loading">
-                                    <div class="spinner"></div>
-                                    Cargando y validando template...
-                                </div>
-                            `;
-                        }
-
                         const arrayBuffer = await file.arrayBuffer();
                         this.templateBuffer = arrayBuffer;
                         
-                        // Validar template
-                        const validationResult = await this.validateTemplate();
+                        await this.validateTemplate();
                         
-                        // Analizar contenido del template
-                        const contentAnalysis = await this.analyzeTemplateContent();
-                        
-                        // Mostrar información del template
+                        const templateInfo = document.getElementById('templateInfo');
                         if (templateInfo) {
-                            const sheetAnalysis = this.analyzeSheets(validationResult.sheets);
                             templateInfo.innerHTML = `
                                 <div class="template-loaded">
-                                    <div class="template-header">
-                                        <span class="template-icon">📊</span>
-                                        <div class="template-details">
-                                            <strong>${file.name}</strong>
-                                            <small>${(file.size / 1024).toFixed(1)} KB</small>
-                                        </div>
-                                    </div>
-                                    <div class="template-info">
-                                        <div class="info-item">
-                                            <span class="label">Pestañas encontradas:</span>
-                                            <span class="value">${validationResult.sheets.join(', ')}</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="label">Pestañas compatibles:</span>
-                                            <span class="value">${sheetAnalysis.compatibleSheets.join(', ') || 'Ninguna detectada'}</span>
-                                        </div>
-                                        ${contentAnalysis && contentAnalysis.tableName ? `
-                                        <div class="info-item">
-                                            <span class="label">Tabla detectada:</span>
-                                            <span class="value">${contentAnalysis.tableName}</span>
-                                        </div>
-                                        ` : ''}
-                                        ${contentAnalysis && contentAnalysis.periods.length > 0 ? `
-                                        <div class="info-item">
-                                            <span class="label">Períodos detectados:</span>
-                                            <span class="value">${contentAnalysis.periods.join(', ')}</span>
-                                        </div>
-                                        ` : ''}
-                                        <div class="info-item">
-                                            <span class="label">Anclas detectadas:</span>
-                                            <span class="value">${validationResult.anchors} nombres definidos</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="label">Placeholders:</span>
-                                            <span class="value">${validationResult.placeholders} encontrados</span>
-                                        </div>
-                                        <div class="info-item">
-                                            <span class="label">Estado:</span>
-                                            <span class="value">${validationResult.isValid ? '✅ Válido' : '⚠️ Revisar'}</span>
-                                        </div>
-                                    </div>
-                                    <div class="template-actions">
-                                        <button class="btn btn-sm" onclick="ExportModule.previewTemplate()">👁️ Vista Previa</button>
-                                        <button class="btn btn-sm" onclick="ExportModule.analyzeTemplate()">🔍 Análisis Detallado</button>
-                                        <button class="btn btn-sm" onclick="ExportModule.diagnoseTemplate()">🔧 Diagnóstico</button>
-                                        <button class="btn btn-sm btn-secondary" onclick="ExportModule.clearTemplate()">🗑️ Limpiar</button>
-                                    </div>
+                                    ✅ Template cargado: <strong>${file.name}</strong>
+                                    <br><small>Listo para generar Excel con formato personalizado</small>
                                 </div>
                             `;
                         }
@@ -538,14 +155,6 @@ const ExportModule = {
                         resolve(file.name);
                         
                     } catch (error) {
-                        if (templateInfo) {
-                            templateInfo.innerHTML = `
-                                <div class="template-error">
-                                    ❌ Error cargando template: ${error.message}
-                                    <br><small>Verifica que el archivo tenga la estructura correcta</small>
-                                </div>
-                            `;
-                        }
                         reject(error);
                     }
                 };
@@ -566,33 +175,9 @@ const ExportModule = {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(this.templateBuffer);
         
-        const validationResult = {
-            sheets: [],
-            anchors: 0,
-            placeholders: 0,
-            isValid: false,
-            errors: []
-        };
-
-        // Obtener lista de pestañas
-        workbook.worksheets.forEach(ws => {
-            validationResult.sheets.push(ws.name);
-        });
-
-        // Buscar pestaña principal (Cuadre, Universo, Agrupados, Minus)
-        const mainSheets = ['Cuadre', 'Universo', 'Agrupados', 'Minus'];
-        const foundMainSheet = validationResult.sheets.find(sheet => 
-            mainSheets.some(main => sheet.toLowerCase().includes(main.toLowerCase()))
-        );
-
-        if (!foundMainSheet) {
-            validationResult.errors.push('No se encontró pestaña principal (Cuadre, Universo, Agrupados, o Minus)');
-        }
-
-        const worksheet = workbook.getWorksheet(foundMainSheet) || workbook.worksheets[0];
+        const worksheet = workbook.getWorksheet('Cuadre');
         if (!worksheet) {
-            validationResult.errors.push('No se pudo acceder a ninguna pestaña del template');
-            return validationResult;
+            throw new Error('El template debe tener una pestaña llamada "Cuadre"');
         }
 
         const requiredAnchors = [
@@ -601,232 +186,44 @@ const ExportModule = {
             'ANCHOR_MINUS_SQL', 'ANCHOR_MINUS_TABLA'
         ];
 
+        let foundAnchors = 0;
+        let foundPlaceholders = 0;
+
         // Verificar nombres definidos
-        if (workbook.definedNames && typeof workbook.definedNames.get === 'function') {
+        if (workbook.definedNames) {
             requiredAnchors.forEach(anchor => {
-                try {
-                    if (workbook.definedNames.get(anchor)) {
-                        validationResult.anchors++;
-                    }
-                } catch (error) {
-                    console.warn(`Error accediendo a nombre definido ${anchor}:`, error.message);
+                if (workbook.definedNames.get(anchor)) {
+                    foundAnchors++;
                 }
             });
         }
 
-        // Verificar placeholders - Lista más amplia y flexible
-        const placeholders = [
-            // Formatos principales
-            '<<UNIVERSOS_SQL>>', '<<UNIVERSOS_TABLA>>',
-            '<<AGRUPADOS_SQL>>', '<<AGRUPADOS_TABLA>>',
-            '<<MINUS_SQL>>', '<<MINUS_TABLA>>',
-            // Placeholders alternativos
-            '{{UNIVERSOS_SQL}}', '{{UNIVERSOS_TABLA}}',
-            '{{AGRUPADOS_SQL}}', '{{AGRUPADOS_TABLA}}',
-            '{{MINUS_SQL}}', '{{MINUS_TABLA}}',
-            // Placeholders para pestañas específicas
-            '<<UNIV_SQL>>', '<<UNIV_TABLA>>',
-            '<<AGR_SQL>>', '<<AGR_TABLA>>',
-            '<<MINUS_SQL>>', '<<MINUS_TABLA>>',
-            // Variaciones adicionales
-            '[UNIVERSOS_SQL]', '[UNIVERSOS_TABLA]',
-            '[AGRUPADOS_SQL]', '[AGRUPADOS_TABLA]',
-            '[MINUS_SQL]', '[MINUS_TABLA]',
-            // Variaciones con paréntesis y porcentajes
-            '(UNIVERSOS_SQL)', '(UNIVERSOS_TABLA)',
-            '(AGRUPADOS_SQL)', '(AGRUPADOS_TABLA)',
-            '(MINUS_SQL)', '(MINUS_TABLA)',
-            '%UNIVERSOS_SQL%', '%UNIVERSOS_TABLA%',
-            '%AGRUPADOS_SQL%', '%AGRUPADOS_TABLA%',
-            '%MINUS_SQL%', '%MINUS_TABLA%',
-            // Variaciones sin delimitadores (solo texto)
-            'UNIVERSOS_SQL', 'UNIVERSOS_TABLA',
-            'AGRUPADOS_SQL', 'AGRUPADOS_TABLA',
-            'MINUS_SQL', 'MINUS_TABLA',
-            // Variaciones en español
-            'UNIVERSOS_QUERY', 'UNIVERSOS_RESULTADO',
-            'AGRUPADOS_QUERY', 'AGRUPADOS_RESULTADO',
-            'MINUS_QUERY', 'MINUS_RESULTADO'
-        ];
+        // Verificar placeholders si no hay nombres definidos
+        if (foundAnchors === 0) {
+            const placeholders = [
+                '<<UNIVERSOS_SQL>>', '<<UNIVERSOS_TABLA>>',
+                '<<AGRUPADOS_SQL>>', '<<AGRUPADOS_TABLA>>',
+                '<<MINUS_SQL>>', '<<MINUS_TABLA>>'
+            ];
 
-        worksheet.eachRow((row, rowNumber) => {
-            row.eachCell((cell, colNumber) => {
-                if (cell.value && typeof cell.value === 'string') {
-                    placeholders.forEach(placeholder => {
-                        if (cell.value.includes(placeholder)) {
-                            validationResult.placeholders++;
-                        }
-                    });
-                }
-            });
-        });
-
-        // Validar que tenga al menos una forma de inserción
-        if (validationResult.anchors === 0 && validationResult.placeholders === 0) {
-            validationResult.errors.push('No se encontraron nombres definidos ni placeholders esperados');
-        }
-
-        validationResult.isValid = validationResult.errors.length === 0;
-
-        console.log(`Template validado: ${validationResult.anchors} nombres definidos, ${validationResult.placeholders} placeholders encontrados`);
-        
-        return validationResult;
-    },
-
-    /**
-     * Analiza las pestañas del template para detectar compatibilidad
-     */
-    analyzeSheets(sheetNames) {
-        const compatibleSheets = [];
-        const sheetTypes = {
-            'universo': ['universo', 'universos', 'univ'],
-            'agrupados': ['agrupado', 'agrupados', 'agr', 'agrupado'],
-            'minus': ['minus', 'diferencia', 'diff'],
-            'cuadre': ['cuadre', 'resumen', 'summary', 'main']
-        };
-
-        sheetNames.forEach(sheetName => {
-            const lowerName = sheetName.toLowerCase();
-            
-            for (const [type, keywords] of Object.entries(sheetTypes)) {
-                if (keywords.some(keyword => lowerName.includes(keyword))) {
-                    compatibleSheets.push(`${sheetName} (${type})`);
-                    break;
-                }
-            }
-        });
-
-        return {
-            compatibleSheets,
-            totalSheets: sheetNames.length,
-            compatibleCount: compatibleSheets.length
-        };
-    },
-
-    /**
-     * Analiza el template para extraer información de tabla y períodos
-     */
-    async analyzeTemplateContent() {
-        if (!this.templateBuffer) {
-            return null;
-        }
-
-        try {
-            const ExcelJS = await this.loadExcelJS();
-            const workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.load(this.templateBuffer);
-            
-            const analysis = {
-                tableName: null,
-                periods: [],
-                sheets: [],
-                placeholders: [],
-                metadata: {}
-            };
-
-            // Analizar cada pestaña
-            for (const worksheet of workbook.worksheets) {
-                const sheetAnalysis = this.analyzeWorksheet(worksheet);
-                analysis.sheets.push(sheetAnalysis);
-                analysis.placeholders.push(...sheetAnalysis.placeholders);
-            }
-
-            // Extraer información de tabla y períodos del nombre del archivo o contenido
-            analysis.tableName = this.extractTableNameFromContent(analysis);
-            analysis.periods = this.extractPeriodsFromContent(analysis);
-
-            return analysis;
-        } catch (error) {
-            console.error('Error analizando template:', error);
-            return null;
-        }
-    },
-
-    /**
-     * Analiza una pestaña específica del worksheet
-     */
-    analyzeWorksheet(worksheet) {
-        const analysis = {
-            name: worksheet.name,
-            placeholders: [],
-            content: [],
-            hasQueries: false,
-            hasTables: false
-        };
-
-        // Buscar placeholders y contenido
-        for (let row = 1; row <= Math.min(50, worksheet.rowCount); row++) {
-            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
-                const cell = worksheet.getCell(row, col);
-                const value = cell.value;
-
-                if (value && typeof value === 'string') {
-                    // Buscar placeholders
-                    const placeholderMatches = value.match(/<<[^>]+>>|{{[^}]+}}|\[[^\]]+\]/g);
-                    if (placeholderMatches) {
-                        analysis.placeholders.push(...placeholderMatches);
-                        if (value.includes('SQL')) analysis.hasQueries = true;
-                        if (value.includes('TABLA')) analysis.hasTables = true;
-                    }
-
-                    // Buscar información de tabla y períodos
-                    if (value.length > 0 && value.length < 100) {
-                        analysis.content.push({
-                            row,
-                            col,
-                            value: value.trim()
+            worksheet.eachRow((row, rowNumber) => {
+                row.eachCell((cell, colNumber) => {
+                    if (cell.value && typeof cell.value === 'string') {
+                        placeholders.forEach(placeholder => {
+                            if (cell.value.includes(placeholder)) {
+                                foundPlaceholders++;
+                            }
                         });
                     }
-                }
-            }
+                });
+            });
         }
 
-        return analysis;
-    },
-
-    /**
-     * Extrae el nombre de la tabla del contenido del template
-     */
-    extractTableNameFromContent(analysis) {
-        // Buscar patrones de nombres de tabla
-        const tablePatterns = [
-            /HM_[A-Z_]+/gi,
-            /MATRIZ[A-Z_]*/gi,
-            /[A-Z_]{3,}_[A-Z_]+/gi
-        ];
-
-        for (const sheet of analysis.sheets) {
-            for (const item of sheet.content) {
-                for (const pattern of tablePatterns) {
-                    const match = item.value.match(pattern);
-                    if (match) {
-                        return match[0];
-                    }
-                }
-            }
+        if (foundAnchors === 0 && foundPlaceholders === 0) {
+            throw new Error('Template inválido: No se encontraron nombres definidos ni placeholders esperados');
         }
 
-        return null;
-    },
-
-    /**
-     * Extrae los períodos del contenido del template
-     */
-    extractPeriodsFromContent(analysis) {
-        const periods = [];
-        const periodPattern = /20\d{4}/g; // Patrón para años YYYYMM
-
-        for (const sheet of analysis.sheets) {
-            for (const item of sheet.content) {
-                const matches = item.value.match(periodPattern);
-                if (matches) {
-                    periods.push(...matches);
-                }
-            }
-        }
-
-        // Eliminar duplicados y ordenar
-        return [...new Set(periods)].sort();
+        console.log(`Template validado: ${foundAnchors} nombres definidos, ${foundPlaceholders} placeholders encontrados`);
     },
 
     /**
@@ -834,704 +231,56 @@ const ExportModule = {
      */
     async insertContentIntoTemplate(worksheet, data) {
         const workbook = worksheet.workbook;
-        let totalInserted = 0;
 
-        // Determinar el tipo de inserción basado en los datos disponibles
-        if (data.tipo === 'universos') {
-            totalInserted = await this.insertSingleTypeContent(worksheet, workbook, data, 'UNIV');
-        } else if (data.tipo === 'agrupados') {
-            totalInserted = await this.insertSingleTypeContent(worksheet, workbook, data, 'AGR');
-        } else if (data.tipo === 'minus') {
-            totalInserted = await this.insertSingleTypeContent(worksheet, workbook, data, 'MINUS');
-        } else {
-            // Inserción completa con todos los tipos
-            totalInserted = await this.insertCompleteContent(worksheet, workbook, data);
-        }
-
-        return { inserted: totalInserted };
-    },
-
-    /**
-     * Inserta contenido de un solo tipo (universos, agrupados, o minus)
-     */
-    async insertSingleTypeContent(worksheet, workbook, data, type) {
         const contentMap = [
-            { 
-                anchor: `ANCHOR_${type}_SQL`, 
-                placeholder: `<<${type}_SQL>>`, 
-                altPlaceholder: `{{${type}_SQL}}`,
-                content: data.sql, 
-                type: 'sql' 
-            },
-            { 
-                anchor: `ANCHOR_${type}_TABLA`, 
-                placeholder: `<<${type}_TABLA>>`, 
-                altPlaceholder: `{{${type}_TABLA}}`,
-                content: data.tabla, 
-                type: 'table' 
-            }
+            { anchor: 'ANCHOR_UNIV_SQL', placeholder: '<<UNIVERSOS_SQL>>', content: data.sqlUniv, type: 'sql' },
+            { anchor: 'ANCHOR_UNIV_TABLA', placeholder: '<<UNIVERSOS_TABLA>>', content: data.tablaUniv, type: 'table' },
+            { anchor: 'ANCHOR_AGR_SQL', placeholder: '<<AGRUPADOS_SQL>>', content: data.sqlAgr, type: 'sql' },
+            { anchor: 'ANCHOR_AGR_TABLA', placeholder: '<<AGRUPADOS_TABLA>>', content: data.tablaAgr, type: 'table' },
+            { anchor: 'ANCHOR_MINUS_SQL', placeholder: '<<MINUS_SQL>>', content: data.sqlMinus, type: 'sql' },
+            { anchor: 'ANCHOR_MINUS_TABLA', placeholder: '<<MINUS_TABLA>>', content: data.tablaMinus, type: 'table' }
         ];
-
-        let insertedCount = 0;
 
         for (const item of contentMap) {
             try {
-                const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder, item.altPlaceholder);
+                const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder);
                 if (position) {
                     if (item.type === 'sql') {
                         await this.insertSQLContent(worksheet, position, item.content);
-                        insertedCount++;
                     } else if (item.type === 'table') {
                         await this.insertTableContent(worksheet, position, item.content);
-                        insertedCount++;
                     }
                 }
             } catch (error) {
                 console.warn(`No se pudo insertar ${item.anchor}:`, error.message);
             }
-        }
-
-        return insertedCount;
-    },
-
-    /**
-     * Inserta contenido completo con todos los tipos
-     */
-    async insertCompleteContent(worksheet, workbook, data) {
-        const contentMap = [
-            { anchor: 'ANCHOR_UNIV_SQL', placeholder: '<<UNIVERSOS_SQL>>', altPlaceholder: '{{UNIVERSOS_SQL}}', content: data.sqlUniv, type: 'sql' },
-            { anchor: 'ANCHOR_UNIV_TABLA', placeholder: '<<UNIVERSOS_TABLA>>', altPlaceholder: '{{UNIVERSOS_TABLA}}', content: data.tablaUniv, type: 'table' },
-            { anchor: 'ANCHOR_AGR_SQL', placeholder: '<<AGRUPADOS_SQL>>', altPlaceholder: '{{AGRUPADOS_SQL}}', content: data.sqlAgr, type: 'sql' },
-            { anchor: 'ANCHOR_AGR_TABLA', placeholder: '<<AGRUPADOS_TABLA>>', altPlaceholder: '{{AGRUPADOS_TABLA}}', content: data.tablaAgr, type: 'table' },
-            { anchor: 'ANCHOR_MINUS_SQL', placeholder: '<<MINUS_SQL>>', altPlaceholder: '{{MINUS_SQL}}', content: data.sqlMinus, type: 'sql' },
-            { anchor: 'ANCHOR_MINUS_TABLA', placeholder: '<<MINUS_TABLA>>', altPlaceholder: '{{MINUS_TABLA}}', content: data.tablaMinus, type: 'table' }
-        ];
-
-        let insertedCount = 0;
-
-        for (const item of contentMap) {
-            try {
-                const position = this.findContentPosition(workbook, worksheet, item.anchor, item.placeholder, item.altPlaceholder);
-                if (position) {
-                    if (item.type === 'sql') {
-                        await this.insertSQLContent(worksheet, position, item.content);
-                        insertedCount++;
-                    } else if (item.type === 'table') {
-                        await this.insertTableContent(worksheet, position, item.content);
-                        insertedCount++;
-                    }
-                }
-            } catch (error) {
-                console.warn(`No se pudo insertar ${item.anchor}:`, error.message);
-            }
-        }
-
-        return insertedCount;
-    },
-
-    /**
-     * Inserción genérica de contenido cuando no se encuentran placeholders específicos
-     */
-    async insertGenericContent(workbook, data) {
-        console.log('Iniciando inserción genérica de contenido...');
-        let totalInserted = 0;
-        
-        for (const worksheet of workbook.worksheets) {
-            try {
-                console.log(`Procesando pestaña: ${worksheet.name}`);
-                
-                // Determinar el tipo de contenido basado en el nombre de la pestaña
-                const sheetType = this.determineSheetType(worksheet.name);
-                
-                if (sheetType) {
-                    console.log(`Pestaña identificada como: ${sheetType}`);
-                    const inserted = await this.replaceExistingContent(worksheet, data, sheetType);
-                    totalInserted += inserted;
-                } else {
-                    // Buscar celdas vacías o con texto genérico donde insertar contenido
-                    const insertionPoints = this.findGenericInsertionPoints(worksheet);
-                    
-                    if (insertionPoints.length > 0) {
-                        console.log(`Encontrados ${insertionPoints.length} puntos de inserción en ${worksheet.name}`);
-                        
-                        // Insertar contenido en los puntos encontrados
-                        const inserted = await this.insertAtGenericPoints(worksheet, insertionPoints, data);
-                        totalInserted += inserted;
-                    } else {
-                        // Si no hay puntos de inserción, agregar al final
-                        console.log(`No se encontraron puntos de inserción, agregando al final de ${worksheet.name}`);
-                        const inserted = await this.insertAtEnd(worksheet, data);
-                        totalInserted += inserted;
-                    }
-                }
-                
-            } catch (error) {
-                console.warn(`Error en inserción genérica para ${worksheet.name}:`, error.message);
-            }
-        }
-        
-        return { inserted: totalInserted };
-    },
-
-    /**
-     * Determina el tipo de pestaña basado en su nombre
-     */
-    determineSheetType(sheetName) {
-        const lowerName = sheetName.toLowerCase();
-        
-        if (lowerName.includes('universo')) {
-            return 'universos';
-        } else if (lowerName.includes('agrupado')) {
-            return 'agrupados';
-        } else if (lowerName.includes('minus')) {
-            return 'minus';
-        }
-        
-        return null;
-    },
-
-    /**
-     * Reemplaza el contenido existente en la pestaña con las queries generadas
-     */
-    async replaceExistingContent(worksheet, data, sheetType) {
-        console.log(`Reemplazando contenido existente en pestaña ${sheetType}...`);
-        let insertedCount = 0;
-        
-        try {
-            // Buscar las celdas que contienen el código SQL existente
-            const codeCells = this.findCodeCells(worksheet);
-            
-            if (codeCells.length > 0) {
-                console.log(`Encontradas ${codeCells.length} celdas con código SQL existente`);
-                
-                // Obtener la query correspondiente al tipo de pestaña
-                const queryData = this.getQueryForSheetType(data, sheetType);
-                
-                if (queryData && queryData.sql) {
-                    // Reemplazar el contenido de las celdas de código
-                    await this.replaceCodeCells(worksheet, codeCells, queryData.sql);
-                    insertedCount++;
-                    
-                    // Buscar y reemplazar celdas de resultado si existen
-                    const resultCells = this.findResultCells(worksheet);
-                    if (resultCells.length > 0 && queryData.tabla) {
-                        await this.replaceResultCells(worksheet, resultCells, queryData.tabla);
-                        insertedCount++;
-                    }
-                }
-            } else {
-                console.log('No se encontraron celdas con código SQL existente, insertando al final');
-                const inserted = await this.insertAtEnd(worksheet, data);
-                insertedCount += inserted;
-            }
-            
-        } catch (error) {
-            console.warn(`Error reemplazando contenido en ${sheetType}:`, error.message);
-        }
-        
-        return insertedCount;
-    },
-
-    /**
-     * Encuentra las celdas que contienen código SQL
-     */
-    findCodeCells(worksheet) {
-        const codeCells = [];
-        
-        for (let row = 1; row <= Math.min(100, worksheet.rowCount); row++) {
-            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
-                const cell = worksheet.getCell(row, col);
-                const value = cell.value;
-                
-                if (value && typeof value === 'string') {
-                    const lowerValue = value.toLowerCase();
-                    
-                    // Buscar celdas que contengan SQL
-                    if (lowerValue.includes('select') || 
-                        lowerValue.includes('from') || 
-                        lowerValue.includes('where') ||
-                        lowerValue.includes('union') ||
-                        lowerValue.includes('minus')) {
-                        
-                        codeCells.push({
-                            row,
-                            col,
-                            value: value,
-                            cell: cell
-                        });
-                    }
-                }
-            }
-        }
-        
-        return codeCells;
-    },
-
-    /**
-     * Encuentra las celdas que contienen resultados
-     */
-    findResultCells(worksheet) {
-        const resultCells = [];
-        
-        for (let row = 1; row <= Math.min(100, worksheet.rowCount); row++) {
-            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
-                const cell = worksheet.getCell(row, col);
-                const value = cell.value;
-                
-                if (value && typeof value === 'string') {
-                    const lowerValue = value.toLowerCase();
-                    
-                    // Buscar celdas que contengan "resultado"
-                    if (lowerValue.includes('resultado')) {
-                        resultCells.push({
-                            row,
-                            col,
-                            value: value,
-                            cell: cell
-                        });
-                    }
-                }
-            }
-        }
-        
-        return resultCells;
-    },
-
-    /**
-     * Obtiene la query correspondiente al tipo de pestaña
-     */
-    getQueryForSheetType(data, sheetType) {
-        switch (sheetType) {
-            case 'universos':
-                return data.universos || { sql: data.sqlUniv, tabla: data.tablaUniv };
-            case 'agrupados':
-                return data.agrupados || { sql: data.sqlAgr, tabla: data.tablaAgr };
-            case 'minus':
-                return data.minus1 || { sql: data.sqlMinus, tabla: data.tablaMinus };
-            default:
-                return null;
-        }
-    },
-
-    /**
-     * Reemplaza las celdas de código con la nueva query
-     */
-    async replaceCodeCells(worksheet, codeCells, newQuery) {
-        console.log(`Reemplazando ${codeCells.length} celdas de código con nueva query`);
-        
-        // Limpiar las celdas existentes
-        codeCells.forEach(cellInfo => {
-            cellInfo.cell.value = '';
-        });
-        
-        // Insertar la nueva query en la primera celda de código
-        if (codeCells.length > 0) {
-            const firstCell = codeCells[0];
-            const cell = worksheet.getCell(firstCell.row, firstCell.col);
-            
-            // Aplicar formato de código SQL
-            cell.value = newQuery;
-            cell.font = { 
-                name: 'Consolas', 
-                size: 10, 
-                color: { argb: 'FFFFFFFF' } 
-            };
-            cell.fill = { 
-                type: 'pattern', 
-                pattern: 'solid', 
-                fgColor: { argb: 'FF1F4E79' } 
-            };
-            cell.alignment = { 
-                horizontal: 'left', 
-                vertical: 'top', 
-                wrapText: true 
-            };
-            
-            // Merge para el área del query (aproximadamente 20 filas)
-            const endRow = Math.min(firstCell.row + 20, worksheet.rowCount);
-            worksheet.mergeCells(firstCell.row, firstCell.col, endRow, firstCell.col + 10);
-            
-            console.log(`Query insertada en celda ${firstCell.row},${firstCell.col}`);
-        }
-    },
-
-    /**
-     * Reemplaza las celdas de resultado con la nueva tabla
-     */
-    async replaceResultCells(worksheet, resultCells, newTable) {
-        console.log(`Reemplazando ${resultCells.length} celdas de resultado con nueva tabla`);
-        
-        if (resultCells.length > 0 && newTable && newTable.length > 0) {
-            const firstResultCell = resultCells[0];
-            const startRow = firstResultCell.row + 1; // Empezar después de "Resultado"
-            
-            // Limpiar área de resultados
-            for (let row = startRow; row <= startRow + 10; row++) {
-                for (let col = 1; col <= 20; col++) {
-                    const cell = worksheet.getCell(row, col);
-                    cell.value = '';
-                }
-            }
-            
-            // Insertar headers
-            const headers = Object.keys(newTable[0]);
-            headers.forEach((header, index) => {
-                const cell = worksheet.getCell(startRow, index + 2);
-                cell.value = header;
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-                cell.fill = { 
-                    type: 'pattern', 
-                    pattern: 'solid', 
-                    fgColor: { argb: 'FF1F4E79' } 
-                };
-                cell.alignment = { horizontal: 'center' };
-            });
-            
-            // Insertar datos
-            newTable.forEach((row, rowIndex) => {
-                headers.forEach((header, colIndex) => {
-                    const cell = worksheet.getCell(startRow + rowIndex + 1, colIndex + 2);
-                    cell.value = row[header];
-                    cell.font = { color: { argb: 'FFFFFFFF' } };
-                    cell.fill = { 
-                        type: 'pattern', 
-                        pattern: 'solid', 
-                        fgColor: { argb: 'FF1F4E79' } 
-                    };
-                    cell.alignment = { horizontal: 'center' };
-                });
-            });
-            
-            console.log(`Tabla insertada en fila ${startRow} con ${newTable.length} filas`);
-        }
-    },
-
-    /**
-     * Crea un Excel básico como último recurso
-     */
-    async createBasicExcel(workbook, data) {
-        console.log('Creando Excel básico como último recurso...');
-        
-        // Limpiar todas las pestañas existentes
-        workbook.worksheets.forEach(worksheet => {
-            worksheet.eachRow((row, rowNumber) => {
-                row.eachCell((cell, colNumber) => {
-                    cell.value = '';
-                });
-            });
-        });
-        
-        // Usar la primera pestaña para crear contenido básico
-        const firstSheet = workbook.worksheets[0];
-        if (firstSheet) {
-            firstSheet.name = 'Universos';
-            
-            // Aplicar formato básico
-            this.formatSheetWithCorrectStyle(firstSheet, 'UNIVERSOS', data.universos, {});
-            
-            // Agregar contenido de agrupados y minus en la misma pestaña
-            let currentRow = 30;
-            
-            if (data.agrupados) {
-                const agrupadosCell = firstSheet.getCell(`A${currentRow}`);
-                agrupadosCell.value = 'AGRUPADOS';
-                agrupadosCell.font = { bold: true, size: 14 };
-                currentRow += 2;
-                
-                if (data.agrupados.sql) {
-                    const queryCell = firstSheet.getCell(`B${currentRow}`);
-                    queryCell.value = data.agrupados.sql;
-                    queryCell.font = { name: 'Consolas', size: 10, color: { argb: 'FFFFFFFF' } };
-                    queryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
-                    queryCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
-                    firstSheet.mergeCells(`B${currentRow}:K${currentRow + 20}`);
-                }
-            }
-            
-            currentRow += 25;
-            
-            if (data.minus1) {
-                const minusCell = firstSheet.getCell(`A${currentRow}`);
-                minusCell.value = 'MINUS';
-                minusCell.font = { bold: true, size: 14 };
-                currentRow += 2;
-                
-                if (data.minus1.sql) {
-                    const queryCell = firstSheet.getCell(`B${currentRow}`);
-                    queryCell.value = data.minus1.sql;
-                    queryCell.font = { name: 'Consolas', size: 10, color: { argb: 'FFFFFFFF' } };
-                    queryCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
-                    queryCell.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
-                    firstSheet.mergeCells(`B${currentRow}:K${currentRow + 20}`);
-                }
-            }
-        }
-        
-        console.log('Excel básico creado exitosamente');
-    },
-
-    /**
-     * Encuentra puntos genéricos de inserción en el worksheet
-     */
-    findGenericInsertionPoints(worksheet) {
-        const insertionPoints = [];
-        
-        // Buscar celdas que contengan texto que sugiera inserción
-        const insertionKeywords = [
-            'query', 'sql', 'consulta', 'resultado', 'tabla', 'datos',
-            'universo', 'agrupado', 'minus', 'cuadre', 'resumen',
-            'ddv', 'edv', 'comparacion', 'analisis'
-        ];
-        
-        for (let row = 1; row <= Math.min(100, worksheet.rowCount); row++) {
-            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
-                const cell = worksheet.getCell(row, col);
-                const value = cell.value;
-                
-                if (value && typeof value === 'string') {
-                    const lowerValue = value.toLowerCase();
-                    
-                    // Buscar celdas que contengan palabras clave
-                    if (insertionKeywords.some(keyword => lowerValue.includes(keyword))) {
-                        insertionPoints.push({
-                            row,
-                            col,
-                            type: 'keyword',
-                            value: value,
-                            context: this.getCellContext(worksheet, row, col)
-                        });
-                    }
-                    
-                    // Buscar celdas vacías cerca de contenido
-                    if (value.trim() === '' && this.hasNearbyContent(worksheet, row, col)) {
-                        insertionPoints.push({
-                            row,
-                            col,
-                            type: 'empty',
-                            value: '',
-                            context: this.getCellContext(worksheet, row, col)
-                        });
-                    }
-                }
-            }
-        }
-        
-        return insertionPoints;
-    },
-
-    /**
-     * Obtiene el contexto de una celda (celdas adyacentes)
-     */
-    getCellContext(worksheet, row, col) {
-        const context = [];
-        
-        // Revisar celdas adyacentes
-        for (let r = Math.max(1, row - 1); r <= Math.min(worksheet.rowCount, row + 1); r++) {
-            for (let c = Math.max(1, col - 1); c <= Math.min(worksheet.columnCount, col + 1); c++) {
-                if (r !== row || c !== col) {
-                    const cell = worksheet.getCell(r, c);
-                    if (cell.value && typeof cell.value === 'string' && cell.value.trim()) {
-                        context.push(cell.value.trim());
-                    }
-                }
-            }
-        }
-        
-        return context;
-    },
-
-    /**
-     * Verifica si hay contenido cerca de una celda
-     */
-    hasNearbyContent(worksheet, row, col) {
-        for (let r = Math.max(1, row - 2); r <= Math.min(worksheet.rowCount, row + 2); r++) {
-            for (let c = Math.max(1, col - 2); c <= Math.min(worksheet.columnCount, col + 2); c++) {
-                const cell = worksheet.getCell(r, c);
-                if (cell.value && typeof cell.value === 'string' && cell.value.trim()) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    },
-
-    /**
-     * Inserta contenido en puntos genéricos encontrados
-     */
-    async insertAtGenericPoints(worksheet, insertionPoints, data) {
-        let insertedCount = 0;
-        
-        for (const point of insertionPoints.slice(0, 6)) { // Limitar a 6 inserciones
-            try {
-                // Determinar qué tipo de contenido insertar basado en el contexto
-                const contentType = this.determineContentType(point, data);
-                
-                if (contentType) {
-                    const cell = worksheet.getCell(point.row, point.col);
-                    
-                    if (contentType.type === 'sql') {
-                        cell.value = contentType.content;
-                        this.applySQLCellStyle(cell);
-                        insertedCount++;
-                    } else if (contentType.type === 'table') {
-                        // Para tablas, insertar en la celda y las siguientes
-                        cell.value = contentType.content;
-                        this.applyDataCellStyle(cell);
-                        insertedCount++;
-                    }
-                }
-            } catch (error) {
-                console.warn(`Error insertando en punto ${point.row},${point.col}:`, error.message);
-            }
-        }
-        
-        console.log(`Inserción genérica completada: ${insertedCount} elementos insertados`);
-    },
-
-    /**
-     * Determina el tipo de contenido a insertar basado en el contexto
-     */
-    determineContentType(point, data) {
-        const context = point.context.join(' ').toLowerCase();
-        
-        // Determinar tipo basado en contexto
-        if (context.includes('universo') || context.includes('universos')) {
-            if (context.includes('sql') || context.includes('query')) {
-                return { type: 'sql', content: data.sqlUniv };
-            } else if (context.includes('tabla') || context.includes('resultado')) {
-                return { type: 'table', content: 'Datos de Universos' };
-            }
-        } else if (context.includes('agrupado') || context.includes('agrupados')) {
-            if (context.includes('sql') || context.includes('query')) {
-                return { type: 'sql', content: data.sqlAgr };
-            } else if (context.includes('tabla') || context.includes('resultado')) {
-                return { type: 'table', content: 'Datos de Agrupados' };
-            }
-        } else if (context.includes('minus')) {
-            if (context.includes('sql') || context.includes('query')) {
-                return { type: 'sql', content: data.sqlMinus };
-            } else if (context.includes('tabla') || context.includes('resultado')) {
-                return { type: 'table', content: 'Datos de Minus' };
-            }
-        }
-        
-        // Fallback: insertar contenido genérico
-        if (point.type === 'empty') {
-            return { type: 'sql', content: data.sqlUniv || data.sqlAgr || data.sqlMinus };
-        }
-        
-        return null;
-    },
-
-    /**
-     * Inserta contenido al final del worksheet
-     */
-    async insertAtEnd(worksheet, data) {
-        try {
-            // Encontrar la última fila con contenido
-            let lastRow = 1;
-            for (let row = 1; row <= worksheet.rowCount; row++) {
-                let hasContent = false;
-                for (let col = 1; col <= worksheet.columnCount; col++) {
-                    const cell = worksheet.getCell(row, col);
-                    if (cell.value && cell.value.toString().trim()) {
-                        hasContent = true;
-                        break;
-                    }
-                }
-                if (hasContent) {
-                    lastRow = row;
-                }
-            }
-            
-            // Insertar contenido después de la última fila
-            const insertRow = lastRow + 2;
-            let insertedCount = 0;
-            
-            // Insertar queries
-            if (data.sqlUniv) {
-                const cell = worksheet.getCell(insertRow, 1);
-                cell.value = 'QUERY UNIVERSOS:\n' + data.sqlUniv;
-                this.applySQLCellStyle(cell);
-                worksheet.mergeCells(insertRow, 1, insertRow, 10);
-                insertedCount++;
-            }
-            
-            if (data.sqlAgr) {
-                const cell = worksheet.getCell(insertRow + 5, 1);
-                cell.value = 'QUERY AGRUPADOS:\n' + data.sqlAgr;
-                this.applySQLCellStyle(cell);
-                worksheet.mergeCells(insertRow + 5, 1, insertRow + 5, 10);
-                insertedCount++;
-            }
-            
-            if (data.sqlMinus) {
-                const cell = worksheet.getCell(insertRow + 10, 1);
-                cell.value = 'QUERY MINUS:\n' + data.sqlMinus;
-                this.applySQLCellStyle(cell);
-                worksheet.mergeCells(insertRow + 10, 1, insertRow + 10, 10);
-                insertedCount++;
-            }
-            
-            console.log(`Contenido insertado al final de ${worksheet.name} en fila ${insertRow} (${insertedCount} elementos)`);
-            return insertedCount;
-            
-        } catch (error) {
-            console.warn(`Error insertando al final de ${worksheet.name}:`, error.message);
-            return 0;
         }
     },
 
     /**
      * Encuentra la posición donde insertar contenido
      */
-    findContentPosition(workbook, worksheet, anchorName, placeholder, altPlaceholder = null) {
+    findContentPosition(workbook, worksheet, anchorName, placeholder) {
         // Intentar nombre definido primero
-        if (workbook.definedNames && typeof workbook.definedNames.get === 'function') {
-            try {
-                const definedName = workbook.definedNames.get(anchorName);
-                if (definedName) {
-                    const match = definedName.value.match(/([^!]+)!\$([A-Z]+)\$(\d+)/);
-                    if (match) {
-                        const col = this.columnLetterToNumber(match[2]);
-                        const row = parseInt(match[3]);
-                        return { row, col };
-                    }
+        if (workbook.definedNames) {
+            const definedName = workbook.definedNames.get(anchorName);
+            if (definedName) {
+                const match = definedName.value.match(/([^!]+)!\$([A-Z]+)\$(\d+)/);
+                if (match) {
+                    const col = this.columnLetterToNumber(match[2]);
+                    const row = parseInt(match[3]);
+                    return { row, col };
                 }
-            } catch (error) {
-                console.warn(`Error accediendo a nombre definido ${anchorName}:`, error.message);
             }
         }
 
         // Fallback: buscar placeholder
         let position = null;
-        const placeholders = [placeholder];
-        if (altPlaceholder) {
-            placeholders.push(altPlaceholder);
-        }
-
-        // Agregar variaciones adicionales del placeholder
-        const basePlaceholder = placeholder.replace(/[<>{}[\]]/g, '');
-        const variations = [
-            `<<${basePlaceholder}>>`,
-            `{{${basePlaceholder}}}`,
-            `[${basePlaceholder}]`,
-            `(${basePlaceholder})`,
-            `%${basePlaceholder}%`
-        ];
-        
-        placeholders.push(...variations);
-
         worksheet.eachRow((row, rowNumber) => {
             row.eachCell((cell, colNumber) => {
-                if (cell.value && typeof cell.value === 'string') {
-                    for (const ph of placeholders) {
-                        if (cell.value.includes(ph)) {
-                            position = { row: rowNumber, col: colNumber };
-                            cell.value = cell.value.replace(ph, '').trim() || null;
-                            return; // Salir del bucle una vez encontrado
-                        }
-                    }
+                if (cell.value && typeof cell.value === 'string' && cell.value.includes(placeholder)) {
+                    position = { row: rowNumber, col: colNumber };
+                    cell.value = cell.value.replace(placeholder, '').trim() || null;
                 }
             });
         });
@@ -1853,314 +602,6 @@ const ExportModule = {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
-    },
-
-    /**
-     * Vista previa del template cargado
-     */
-    async previewTemplate() {
-        if (!this.templateBuffer) {
-            alert('No hay template cargado');
-            return;
-        }
-
-        try {
-            const ExcelJS = await this.loadExcelJS();
-            const workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.load(this.templateBuffer);
-            
-            let previewHTML = '<div class="template-preview">';
-            previewHTML += '<h4>📊 Vista Previa del Template</h4>';
-            
-            workbook.worksheets.forEach((worksheet, index) => {
-                previewHTML += `<div class="sheet-preview">`;
-                previewHTML += `<h5>📋 ${worksheet.name}</h5>`;
-                previewHTML += `<div class="sheet-info">`;
-                previewHTML += `<p><strong>Dimensiones:</strong> ${worksheet.rowCount} filas x ${worksheet.columnCount} columnas</p>`;
-                
-                // Mostrar primeras filas
-                previewHTML += `<div class="sheet-sample">`;
-                previewHTML += `<h6>Primeras 5 filas:</h6>`;
-                previewHTML += `<table class="preview-table">`;
-                
-                for (let row = 1; row <= Math.min(5, worksheet.rowCount); row++) {
-                    previewHTML += `<tr>`;
-                    for (let col = 1; col <= Math.min(10, worksheet.columnCount); col++) {
-                        const cell = worksheet.getCell(row, col);
-                        const value = cell.value || '';
-                        previewHTML += `<td>${value}</td>`;
-                    }
-                    previewHTML += `</tr>`;
-                }
-                
-                previewHTML += `</table>`;
-                previewHTML += `</div>`;
-                previewHTML += `</div>`;
-                previewHTML += `</div>`;
-            });
-            
-            previewHTML += '</div>';
-            
-            if (typeof UIModule !== 'undefined' && UIModule.showModal) {
-                UIModule.showModal('Vista Previa del Template', previewHTML);
-            } else {
-                alert('Vista previa no disponible');
-            }
-            
-        } catch (error) {
-            alert('Error generando vista previa: ' + error.message);
-        }
-    },
-
-    /**
-     * Limpia el template cargado
-     */
-    clearTemplate() {
-        this.templateBuffer = null;
-        this.templateWorkbook = null;
-        
-        const templateInfo = document.getElementById('templateInfo');
-        if (templateInfo) {
-            templateInfo.innerHTML = `
-                <div class="template-empty">
-                    <span class="template-icon">📂</span>
-                    <p>No hay template cargado</p>
-                    <small>Haz clic en "Cargar Template" para seleccionar un archivo Excel</small>
-                </div>
-            `;
-        }
-        
-        if (typeof UIModule !== 'undefined' && UIModule.showNotification) {
-            UIModule.showNotification('Template eliminado', 'info', 2000);
-        }
-    },
-
-    /**
-     * Diagnóstico completo del template para debugging
-     */
-    async diagnoseTemplate() {
-        if (!this.templateBuffer) {
-            alert('No hay template cargado');
-            return;
-        }
-
-        try {
-            const ExcelJS = await this.loadExcelJS();
-            const workbook = new ExcelJS.Workbook();
-            await workbook.xlsx.load(this.templateBuffer);
-            
-            let diagnosisHTML = `
-                <div class="template-diagnosis">
-                    <h4>🔧 Diagnóstico Completo del Template</h4>
-                    
-                    <div class="diagnosis-section">
-                        <h5>📊 Información del Workbook</h5>
-                        <ul>
-                            <li><strong>Total de pestañas:</strong> ${workbook.worksheets.length}</li>
-                            <li><strong>Nombres definidos:</strong> ${workbook.definedNames ? 'Disponibles' : 'No disponibles'}</li>
-                        </ul>
-                    </div>
-
-                    <div class="diagnosis-section">
-                        <h5>📋 Análisis Detallado por Pestaña</h5>
-            `;
-
-            for (const worksheet of workbook.worksheets) {
-                const analysis = this.diagnoseWorksheet(worksheet);
-                
-                diagnosisHTML += `
-                    <div class="worksheet-diagnosis">
-                        <h6>📄 ${worksheet.name}</h6>
-                        <ul>
-                            <li><strong>Dimensiones:</strong> ${worksheet.rowCount} filas × ${worksheet.columnCount} columnas</li>
-                            <li><strong>Celdas con contenido:</strong> ${analysis.cellsWithContent}</li>
-                            <li><strong>Texto encontrado:</strong> ${analysis.textCells}</li>
-                            <li><strong>Palabras clave:</strong> ${analysis.keywordsFound.join(', ') || 'Ninguna'}</li>
-                        </ul>
-                        
-                        <div class="sample-content">
-                            <strong>Muestra de contenido (primeras 10 celdas con texto):</strong><br>
-                            ${analysis.sampleContent.map(item => 
-                                `<span class="content-item">F${item.row}C${item.col}: "${item.value}"</span>`
-                            ).join('<br>')}
-                        </div>
-                    </div>
-                `;
-            }
-
-            diagnosisHTML += `
-                    </div>
-
-                    <div class="diagnosis-section">
-                        <h5>💡 Recomendaciones de Solución</h5>
-                        <ul>
-                            <li>Si no se encuentran placeholders, el sistema usará inserción genérica</li>
-                            <li>El contenido se insertará en celdas vacías o al final de cada pestaña</li>
-                            <li>Se mantendrá el formato original del template</li>
-                        </ul>
-                    </div>
-                </div>
-            `;
-
-            if (typeof UIModule !== 'undefined' && UIModule.showModal) {
-                UIModule.showModal('Diagnóstico del Template', diagnosisHTML);
-            } else {
-                console.log('Diagnóstico del template completado');
-            }
-
-        } catch (error) {
-            console.error('Error en diagnóstico:', error);
-            alert('Error realizando diagnóstico: ' + error.message);
-        }
-    },
-
-    /**
-     * Diagnostica una pestaña específica
-     */
-    diagnoseWorksheet(worksheet) {
-        const analysis = {
-            cellsWithContent: 0,
-            textCells: 0,
-            keywordsFound: [],
-            sampleContent: []
-        };
-
-        const keywords = [
-            'query', 'sql', 'consulta', 'resultado', 'tabla', 'datos',
-            'universo', 'agrupado', 'minus', 'cuadre', 'resumen',
-            'ddv', 'edv', 'comparacion', 'analisis'
-        ];
-
-        for (let row = 1; row <= Math.min(50, worksheet.rowCount); row++) {
-            for (let col = 1; col <= Math.min(20, worksheet.columnCount); col++) {
-                const cell = worksheet.getCell(row, col);
-                const value = cell.value;
-
-                if (value && value.toString().trim()) {
-                    analysis.cellsWithContent++;
-                    
-                    if (typeof value === 'string') {
-                        analysis.textCells++;
-                        
-                        // Buscar palabras clave
-                        const lowerValue = value.toLowerCase();
-                        keywords.forEach(keyword => {
-                            if (lowerValue.includes(keyword) && !analysis.keywordsFound.includes(keyword)) {
-                                analysis.keywordsFound.push(keyword);
-                            }
-                        });
-                        
-                        // Agregar a muestra si no hay muchas
-                        if (analysis.sampleContent.length < 10) {
-                            analysis.sampleContent.push({
-                                row,
-                                col,
-                                value: value.substring(0, 50) + (value.length > 50 ? '...' : '')
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        return analysis;
-    },
-
-    /**
-     * Análisis detallado del template cargado
-     */
-    async analyzeTemplate() {
-        if (!this.templateBuffer) {
-            alert('No hay template cargado');
-            return;
-        }
-
-        try {
-            const analysis = await this.analyzeTemplateContent();
-            if (!analysis) {
-                alert('Error analizando template');
-                return;
-            }
-
-            let analysisHTML = `
-                <div class="template-analysis">
-                    <h4>🔍 Análisis Detallado del Template</h4>
-                    
-                    <div class="analysis-section">
-                        <h5>📊 Información General</h5>
-                        <ul>
-                            <li><strong>Pestañas:</strong> ${analysis.sheets.length}</li>
-                            <li><strong>Placeholders totales:</strong> ${analysis.placeholders.length}</li>
-                            ${analysis.tableName ? `<li><strong>Tabla detectada:</strong> ${analysis.tableName}</li>` : ''}
-                            ${analysis.periods.length > 0 ? `<li><strong>Períodos detectados:</strong> ${analysis.periods.join(', ')}</li>` : ''}
-                        </ul>
-                    </div>
-
-                    <div class="analysis-section">
-                        <h5>📋 Análisis por Pestaña</h5>
-            `;
-
-            analysis.sheets.forEach(sheet => {
-                analysisHTML += `
-                    <div class="sheet-analysis">
-                        <h6>📄 ${sheet.name}</h6>
-                        <ul>
-                            <li><strong>Placeholders:</strong> ${sheet.placeholders.length}</li>
-                            <li><strong>Contiene queries:</strong> ${sheet.hasQueries ? '✅' : '❌'}</li>
-                            <li><strong>Contiene tablas:</strong> ${sheet.hasTables ? '✅' : '❌'}</li>
-                        </ul>
-                        ${sheet.placeholders.length > 0 ? `
-                            <div class="placeholders-list">
-                                <strong>Placeholders encontrados:</strong><br>
-                                ${sheet.placeholders.map(p => `<span class="placeholder-tag">${p}</span>`).join(' ')}
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            });
-
-            analysisHTML += `
-                    </div>
-
-                    <div class="analysis-section">
-                        <h5>💡 Recomendaciones</h5>
-                        <ul>
-            `;
-
-            // Generar recomendaciones
-            if (analysis.placeholders.length === 0) {
-                analysisHTML += '<li>⚠️ No se encontraron placeholders. Agrega placeholders como <<UNIVERSOS_SQL>>, <<AGRUPADOS_TABLA>>, etc.</li>';
-            } else if (analysis.placeholders.length < 4) {
-                analysisHTML += '<li>⚠️ Pocos placeholders encontrados. Se recomiendan al menos 6 placeholders para un cuadre completo.</li>';
-            } else {
-                analysisHTML += '<li>✅ Template bien estructurado con placeholders suficientes.</li>';
-            }
-
-            if (!analysis.tableName) {
-                analysisHTML += '<li>ℹ️ No se detectó nombre de tabla. Asegúrate de que el template contenga el nombre de la tabla.</li>';
-            }
-
-            if (analysis.periods.length === 0) {
-                analysisHTML += '<li>ℹ️ No se detectaron períodos. Asegúrate de que el template contenga los períodos a analizar.</li>';
-            }
-
-            analysisHTML += `
-                        </ul>
-                    </div>
-                </div>
-            `;
-
-            if (typeof UIModule !== 'undefined' && UIModule.showModal) {
-                UIModule.showModal('Análisis Detallado del Template', analysisHTML);
-            } else {
-                alert('Análisis completado. Revisa la consola para más detalles.');
-                console.log('Análisis del template:', analysis);
-            }
-
-        } catch (error) {
-            console.error('Error en análisis detallado:', error);
-            alert('Error realizando análisis detallado: ' + error.message);
-        }
     },
 
     // =============================================================================
@@ -3186,5 +1627,454 @@ const ExportModule = {
         }
         
         return text.substring(0, MAX_EXCEL_CHARS) + '\n\n[... CONTENIDO TRUNCADO ...]';
+    },
+
+    // =============================================================================
+    // MÉTODOS PARA CREAR PESTAÑAS INDIVIDUALES
+    // =============================================================================
+
+    /**
+     * Crea la pestaña de UNIVERSOS
+     */
+    async createUniversosWorksheet(workbook, queryUniversos, params) {
+        const worksheet = workbook.addWorksheet('Universos', {
+            pageSetup: { paperSize: 9, orientation: 'landscape' }
+        });
+
+        // Configurar UNA SOLA columna muy ancha para las queries (como en formatter)
+        worksheet.columns = [
+            { width: 150 } // Una sola columna ancha como en el proyecto formatter
+        ];
+
+        let currentRow = 1;
+
+        // Título principal
+        const titleCell = worksheet.getCell(`A${currentRow}`);
+        titleCell.value = 'UNIVERSOS - Comparación de Registros DDV vs EDV';
+        titleCell.style = {
+            font: { size: 14, bold: true, color: { argb: 'FFFFFFFF' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B46C1' } }, // Púrpura como plantilla
+            alignment: { horizontal: 'center', vertical: 'middle' }
+        };
+        worksheet.getRow(currentRow).height = 30;
+        currentRow += 2;
+
+        // Información de parámetros (en formato compacto)
+        currentRow = this.addParameterInfoCompact(worksheet, currentRow, params);
+        
+        // Código SQL (ocupando toda la columna ancha)
+        currentRow = this.addSQLSectionWide(worksheet, currentRow, 'QUERY SQL', queryUniversos);
+        
+        // Tabla de resultados
+        currentRow = this.addUniversosResultTable(worksheet, currentRow, params);
+
+        return worksheet;
+    },
+
+    /**
+     * Crea la pestaña de AGRUPADOS
+     */
+    async createAgrupadosWorksheet(workbook, queryAgrupados, params) {
+        const worksheet = workbook.addWorksheet('Agrupados', {
+            pageSetup: { paperSize: 9, orientation: 'landscape' }
+        });
+
+        // Configurar UNA SOLA columna muy ancha para las queries
+        worksheet.columns = [
+            { width: 150 }
+        ];
+
+        let currentRow = 1;
+
+        // Título principal
+        const titleCell = worksheet.getCell(`A${currentRow}`);
+        titleCell.value = 'AGRUPADOS - Comparación de Métricas DDV vs EDV';
+        titleCell.style = {
+            font: { size: 14, bold: true, color: { argb: 'FFFFFFFF' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B46C1' } }, // Púrpura como plantilla
+            alignment: { horizontal: 'center', vertical: 'middle' }
+        };
+        worksheet.getRow(currentRow).height = 30;
+        currentRow += 2;
+
+        // Información de parámetros
+        currentRow = this.addParameterInfoCompact(worksheet, currentRow, params);
+        
+        // Código SQL
+        currentRow = this.addSQLSectionWide(worksheet, currentRow, 'QUERY SQL', queryAgrupados);
+        
+        // Tabla de resultados
+        currentRow = this.addAgrupadosResultTable(worksheet, currentRow, params);
+
+        return worksheet;
+    },
+
+    /**
+     * Crea la pestaña de MINUS
+     */
+    async createMinusWorksheet(workbook, queryMinus1, queryMinus2, params) {
+        const worksheet = workbook.addWorksheet('Minus', {
+            pageSetup: { paperSize: 9, orientation: 'landscape' }
+        });
+
+        // Configurar UNA SOLA columna muy ancha para las queries
+        worksheet.columns = [
+            { width: 150 }
+        ];
+
+        let currentRow = 1;
+
+        // Título principal
+        const titleCell = worksheet.getCell(`A${currentRow}`);
+        titleCell.value = 'MINUS - Diferencias entre DDV y EDV';
+        titleCell.style = {
+            font: { size: 14, bold: true, color: { argb: 'FFFFFFFF' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6B46C1' } }, // Púrpura como plantilla
+            alignment: { horizontal: 'center', vertical: 'middle' }
+        };
+        worksheet.getRow(currentRow).height = 30;
+        currentRow += 2;
+
+        // Información de parámetros
+        currentRow = this.addParameterInfoCompact(worksheet, currentRow, params);
+        
+        // Código SQL MINUS 1
+        currentRow = this.addSQLSectionWide(worksheet, currentRow, 'QUERY MINUS 1 (EDV - DDV)', queryMinus1);
+        
+        // Código SQL MINUS 2
+        currentRow = this.addSQLSectionWide(worksheet, currentRow, 'QUERY MINUS 2 (DDV - EDV)', queryMinus2);
+        
+        // Tabla de resultados
+        currentRow = this.addMinusResultTable(worksheet, currentRow, params);
+
+        return worksheet;
+    },
+
+    /**
+     * Agrega información de parámetros en formato compacto (una sola columna)
+     */
+    addParameterInfoCompact(worksheet, currentRow, params) {
+        const parameterText = `DDV: ${params.esquemaDDV}.${params.tablaDDV} | EDV: ${params.esquemaEDV}.${params.tablaEDV} | Períodos: ${params.periodos} | ${new Date().toLocaleString('es-ES')}`;
+        
+        const cell = worksheet.getCell(currentRow, 1);
+        cell.value = parameterText;
+        cell.style = {
+            font: { size: 10, color: { argb: 'FF2E3440' } }, // Color más oscuro
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } }, // Fondo gris claro
+            alignment: { horizontal: 'left', vertical: 'middle', wrapText: false }, // Sin ajustar texto
+            border: {
+                top: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+                left: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+                bottom: { style: 'thin', color: { argb: 'FFD1D5DB' } },
+                right: { style: 'thin', color: { argb: 'FFD1D5DB' } }
+            }
+        };
+        worksheet.getRow(currentRow).height = 20;
+
+        return currentRow + 2;
+    },
+
+    /**
+     * Agrega sección de código SQL ocupando toda la columna ancha (como en el formatter)
+     */
+    addSQLSectionWide(worksheet, currentRow, title, sqlCode) {
+        // Título de sección
+        const titleCell = worksheet.getCell(currentRow, 1);
+        titleCell.value = title;
+        titleCell.style = {
+            font: { size: 12, bold: true, color: { argb: 'FFEBCB8B' } }, // Color dorado como plantilla
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E3440' } }, // Fondo gris oscuro
+            alignment: { horizontal: 'left', vertical: 'middle' }
+        };
+        worksheet.getRow(currentRow).height = 25;
+        currentRow++;
+
+        if (!sqlCode) {
+            const cell = worksheet.getCell(currentRow, 1);
+            cell.value = '-- Query no disponible';
+            this.applyWideCodeStyle(cell);
+            return currentRow + 2;
+        }
+
+        // Usar exactamente el mismo método que el proyecto formatter
+        const excelResult = this.prepareQueryForExcel(sqlCode);
+        if (!excelResult.success) {
+            const cell = worksheet.getCell(currentRow, 1);
+            cell.value = '-- Error al formatear query: ' + excelResult.error;
+            this.applyWideCodeStyle(cell);
+            return currentRow + 2;
+        }
+
+        // Insertar cada línea formateada en una fila separada (como en el formatter)
+        excelResult.data.forEach(([line]) => {
+            const cell = worksheet.getCell(currentRow, 1);
+            cell.value = line;
+            this.applyWideCodeStyle(cell);
+            
+            // Calcular altura basada en el contenido
+            const lineCount = (line.match(/\n/g) || []).length + 1;
+            worksheet.getRow(currentRow).height = Math.max(20, lineCount * 15);
+            
+            currentRow++;
+        });
+        
+        return currentRow + 1;
+    },
+
+    /**
+     * Prepara query para Excel (igual que en el proyecto formatter)
+     */
+    prepareQueryForExcel(query) {
+        try {
+            // Usar el SQL formatter con configuración para Excel
+            let formattedSQL = query;
+            if (typeof QueryModule !== 'undefined' && QueryModule.sqlFormatter) {
+                const formatResult = QueryModule.sqlFormatter.formatSQL(query, true);
+                if (formatResult.success) {
+                    formattedSQL = formatResult.query;
+                }
+            }
+
+            const lines = formattedSQL.split('\n');
+            const excelData = [];
+            const MAX_EXCEL_CHARS = 32767;
+            
+            lines.forEach(line => {
+                if (line.trim()) {
+                    if (line.length > MAX_EXCEL_CHARS) {
+                        // Dividir líneas que excedan el límite
+                        const chunks = this.splitLineForExcel(line, MAX_EXCEL_CHARS);
+                        chunks.forEach(chunk => {
+                            excelData.push([chunk]);
+                        });
+                    } else {
+                        excelData.push([line]);
+                    }
+                }
+            });
+
+            return {
+                success: true,
+                data: excelData,
+                rowCount: excelData.length
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    },
+
+    /**
+     * Divide línea larga para Excel
+     */
+    splitLineForExcel(line, maxChars) {
+        const chunks = [];
+        let currentPos = 0;
+        
+        while (currentPos < line.length) {
+            let chunkEnd = currentPos + maxChars;
+            
+            if (chunkEnd < line.length) {
+                // Buscar una posición de corte apropiada (coma, espacio, etc.)
+                const nearComma = line.lastIndexOf(',', chunkEnd);
+                const nearSpace = line.lastIndexOf(' ', chunkEnd);
+                
+                if (nearComma > currentPos + maxChars * 0.8) {
+                    chunkEnd = nearComma + 1;
+                } else if (nearSpace > currentPos + maxChars * 0.8) {
+                    chunkEnd = nearSpace + 1;
+                }
+            }
+            
+            const chunk = line.substring(currentPos, chunkEnd);
+            chunks.push(chunk);
+            currentPos = chunkEnd;
+        }
+        
+        return chunks;
+    },
+
+    /**
+     * Aplica estilo de código para columna ancha (fondo oscuro como plantilla)
+     */
+    applyWideCodeStyle(cell) {
+        cell.style = {
+            font: { name: 'Consolas', size: 10, color: { argb: 'FFECEFF4' } }, // Texto claro
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B4252' } }, // Fondo oscuro como plantilla
+            alignment: { horizontal: 'left', vertical: 'top', wrapText: false }, // SIN ajustar texto automático
+            border: {
+                top: { style: 'thin', color: { argb: 'FF4C566A' } },
+                left: { style: 'thin', color: { argb: 'FF4C566A' } },
+                bottom: { style: 'thin', color: { argb: 'FF4C566A' } },
+                right: { style: 'thin', color: { argb: 'FF4C566A' } }
+            }
+        };
+    },
+
+    // =============================================================================
+    // MÉTODOS PARA INSERTAR QUERIES EN PLANTILLA EXISTENTE
+    // =============================================================================
+
+    /**
+     * Inserta queries en plantilla cargada
+     */
+    async insertQueriesIntoTemplate(workbook, queries, params) {
+        console.log('🔄 Insertando queries en plantilla...');
+
+        // Buscar y procesar cada pestaña
+        const universosPestaña = workbook.getWorksheet('Universos') || workbook.getWorksheet('UNIVERSOS');
+        const agrupadosPestaña = workbook.getWorksheet('Agrupados') || workbook.getWorksheet('AGRUPADOS');  
+        const minusPestaña = workbook.getWorksheet('Minus') || workbook.getWorksheet('MINUS');
+
+        if (universosPestaña) {
+            await this.insertQueryIntoWorksheet(universosPestaña, queries.universos, 'UNIVERSOS', params);
+        }
+
+        if (agrupadosPestaña) {
+            await this.insertQueryIntoWorksheet(agrupadosPestaña, queries.agrupados, 'AGRUPADOS', params);
+        }
+
+        if (minusPestaña) {
+            await this.insertQueryIntoWorksheet(minusPestaña, this.combineMinus(queries.minus1, queries.minus2), 'MINUS', params);
+        }
+
+        console.log('✅ Queries insertadas en plantilla');
+    },
+
+    /**
+     * Inserta query en una pestaña específica de la plantilla
+     */
+    async insertQueryIntoWorksheet(worksheet, query, sheetType, params) {
+        if (!query) {
+            console.warn(`⚠️ No hay query para ${sheetType}`);
+            return;
+        }
+
+        // Buscar área de inserción - puede ser por celdas vacías o marcadores
+        const insertionRow = this.findInsertionPoint(worksheet, sheetType);
+        
+        if (insertionRow) {
+            // Actualizar información de parámetros si existe
+            this.updateParameterInfo(worksheet, params);
+            
+            // Insertar la query formateada
+            await this.insertFormattedQuery(worksheet, insertionRow, query);
+            
+            console.log(`✅ Query ${sheetType} insertada en fila ${insertionRow}`);
+        } else {
+            console.warn(`⚠️ No se encontró punto de inserción para ${sheetType}`);
+        }
+    },
+
+    /**
+     * Encuentra el punto de inserción en la pestaña
+     */
+    findInsertionPoint(worksheet, sheetType) {
+        let insertionRow = null;
+
+        // Buscar por marcadores de texto comunes o áreas vacías
+        worksheet.eachRow((row, rowNumber) => {
+            row.eachCell((cell) => {
+                if (cell.value && typeof cell.value === 'string') {
+                    const cellValue = cell.value.toString().toLowerCase();
+                    
+                    // Buscar indicadores de dónde insertar la query
+                    if (cellValue.includes('query') || 
+                        cellValue.includes('código') || 
+                        cellValue.includes('sql') ||
+                        cellValue.includes('aquí') ||
+                        cellValue.includes('insert')) {
+                        if (!insertionRow || rowNumber < insertionRow) {
+                            insertionRow = rowNumber + 1; // Insertar en la siguiente fila
+                        }
+                    }
+                }
+            });
+        });
+
+        // Si no encuentra marcadores, usar una posición por defecto
+        if (!insertionRow) {
+            insertionRow = 5; // Fila por defecto después del título
+        }
+
+        return insertionRow;
+    },
+
+    /**
+     * Actualiza la información de parámetros en la plantilla
+     */
+    updateParameterInfo(worksheet, params) {
+        worksheet.eachRow((row, rowNumber) => {
+            row.eachCell((cell) => {
+                if (cell.value && typeof cell.value === 'string') {
+                    let cellValue = cell.value.toString();
+                    
+                    // Reemplazar marcadores de parámetros
+                    cellValue = cellValue.replace(/\{DDV_SCHEMA\}/g, params.esquemaDDV || 'DDV_SCHEMA');
+                    cellValue = cellValue.replace(/\{DDV_TABLE\}/g, params.tablaDDV || 'DDV_TABLE');
+                    cellValue = cellValue.replace(/\{EDV_SCHEMA\}/g, params.esquemaEDV || 'EDV_SCHEMA');
+                    cellValue = cellValue.replace(/\{EDV_TABLE\}/g, params.tablaEDV || 'EDV_TABLE');
+                    cellValue = cellValue.replace(/\{PERIODOS\}/g, params.periodos || 'PERIODOS');
+                    cellValue = cellValue.replace(/\{FECHA\}/g, new Date().toLocaleString('es-ES'));
+                    
+                    if (cellValue !== cell.value.toString()) {
+                        cell.value = cellValue;
+                    }
+                }
+            });
+        });
+    },
+
+    /**
+     * Inserta query formateada preservando el estilo de la plantilla
+     */
+    async insertFormattedQuery(worksheet, startRow, query) {
+        // Preparar query para Excel con formato horizontal
+        const excelResult = this.prepareQueryForExcel(query);
+        if (!excelResult.success) {
+            console.error('Error preparando query:', excelResult.error);
+            return;
+        }
+
+        let currentRow = startRow;
+
+        // Insertar cada línea de la query
+        excelResult.data.forEach(([line]) => {
+            // Usar columna A (1) que debería tener el ancho adecuado en la plantilla
+            const cell = worksheet.getCell(currentRow, 1);
+            cell.value = line;
+            
+            // Aplicar estilo de código pero preservar algunos estilos de la plantilla
+            const existingStyle = cell.style || {};
+            cell.style = {
+                ...existingStyle,
+                font: { 
+                    name: 'Consolas', 
+                    size: 10, 
+                    color: { argb: 'FFECEFF4' },
+                    ...existingStyle.font 
+                },
+                fill: { 
+                    type: 'pattern', 
+                    pattern: 'solid', 
+                    fgColor: { argb: 'FF3B4252' },
+                    ...existingStyle.fill 
+                },
+                alignment: { 
+                    horizontal: 'left', 
+                    vertical: 'top', 
+                    wrapText: false,
+                    ...existingStyle.alignment 
+                }
+            };
+
+            // Ajustar altura de fila basada en contenido
+            const lineCount = (line.match(/\n/g) || []).length + 1;
+            worksheet.getRow(currentRow).height = Math.max(20, lineCount * 15);
+            
+            currentRow++;
+        });
     }
 };

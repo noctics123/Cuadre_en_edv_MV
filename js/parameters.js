@@ -5,6 +5,15 @@ const ParametersModule = {
     
     // Variables del módulo
     parameters: {},
+
+    /**
+     * Inicializa el módulo de parámetros
+     */
+    async init() {
+        // Inicializar auto-guardado
+        this.initializeAutoSave();
+        console.log('🔧 Módulo de parámetros inicializado con auto-guardado');
+    },
     
     /**
      * Carga datos de ejemplo al inicializar
@@ -155,9 +164,16 @@ const ParametersModule = {
      * Resetea todos los parámetros
      */
     resetParameters() {
-        if (confirm('¿Resetear todos los parámetros? Se perderán los datos actuales.')) {
+        if (confirm('¿Resetear todos los parámetros y limpiar toda la configuración? Se perderán los datos actuales.')) {
+            // Limpiar todos los datos guardados
             this.parameters = {};
             localStorage.removeItem('cuadreParameters');
+            localStorage.removeItem('cuadreParameters_autosave');
+            
+            // Limpiar queries generados
+            if (typeof QueryModule !== 'undefined') {
+                QueryModule.generatedQueries = {};
+            }
             
             // Limpiar formulario
             document.getElementById('esquemaDDV').value = '';
@@ -167,11 +183,62 @@ const ParametersModule = {
             document.getElementById('periodos').value = '';
             document.getElementById('renameRules').value = '';
             
-            // Cargar datos de ejemplo
-            this.loadExampleData();
+            // Limpiar áreas de visualización
+            const queryOutputs = document.getElementById('queryOutputs');
+            if (queryOutputs) {
+                queryOutputs.innerHTML = '<p style="color: #6c757d;">Los queries aparecerán aquí una vez generados.</p>';
+            }
             
-            alert('Parámetros reseteados');
+            const fieldMapping = document.getElementById('fieldMapping');
+            if (fieldMapping) {
+                fieldMapping.style.display = 'none';
+            }
+            
+            // Navegar a la primera pestaña
+            if (typeof switchTab === 'function') {
+                switchTab('parametros');
+            }
+            
+            alert('✅ Toda la configuración ha sido limpiada');
         }
+    },
+
+    /**
+     * Auto-guarda los parámetros sin mostrar mensaje
+     */
+    autoSaveParameters() {
+        const formData = {
+            esquemaDDV: document.getElementById('esquemaDDV').value.trim(),
+            tablaDDV: document.getElementById('tablaDDV').value.trim(),
+            esquemaEDV: document.getElementById('esquemaEDV').value.trim(),
+            tablaEDV: document.getElementById('tablaEDV').value.trim(),
+            periodos: document.getElementById('periodos').value.trim(),
+            renameRules: Utils.parseRenameRules(document.getElementById('renameRules').value)
+        };
+        
+        // Guardar en localStorage sin validación para auto-guardado
+        localStorage.setItem('cuadreParameters_autosave', JSON.stringify(formData));
+    },
+
+    /**
+     * Inicializa eventos para auto-guardado
+     */
+    initializeAutoSave() {
+        const fields = ['esquemaDDV', 'tablaDDV', 'esquemaEDV', 'tablaEDV', 'periodos', 'renameRules'];
+        
+        fields.forEach(fieldId => {
+            const field = document.getElementById(fieldId);
+            if (field) {
+                // Auto-guardar después de 2 segundos de inactividad
+                let timeout;
+                field.addEventListener('input', () => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => {
+                        this.autoSaveParameters();
+                    }, 2000);
+                });
+            }
+        });
     },
 
     /**

@@ -63,7 +63,10 @@
                 <textarea id="renameRules" placeholder="codclaveunicocli:cod_uni_cocli&#10;otrocampo:otro_campo_nuevo">codclaveunicocli:cod_uni_cocli</textarea>
             </div>
             
-            <button class="btn" onclick="ParametersModule.saveParameters()">Guardar Parámetros</button>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button class="btn" onclick="ParametersModule.saveParameters()">Guardar Parámetros</button>
+                <button class="btn btn-secondary" onclick="ParametersModule.resetParameters()" title="Limpiar todos los campos y configuración guardada">🗑️ Limpiar Todo</button>
+            </div>
         </div>
         
         <!-- TAB 2: DESCRIBE TABLA -->
@@ -289,6 +292,13 @@
     <script src="js/table-analysis.js"></script>
     <script src="js/parameters.js"></script>
     <script src="js/repository.js"></script>
+    
+    <!-- Módulos SQL Formatter para formateo horizontal de campos -->
+    <script src="js/sql-formatter/SQLParser.js"></script>
+    <script src="js/sql-formatter/FieldFormatter.js"></script>
+    <script src="js/sql-formatter/QueryBuilder.js"></script>
+    <script src="js/sql-formatter/SQLFormatter.js"></script>
+    
     <script src="js/query-generator.js"></script>
     <script src="js/export.js"></script>
     <script src="js/ui.js"></script>
